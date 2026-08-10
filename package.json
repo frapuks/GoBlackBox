@@ -7,13 +7,13 @@
     "apps/*"
   ],
   "scripts": {
-    "up": "docker compose up",
-    "deps": "docker compose run --rm install",
+    "up": "docker compose up -d --build",
     "down": "docker compose down",
-    "reset": "docker compose down -v && docker compose up",
+    "reset": "docker compose down -v && docker compose up -d --build",
+    "logs": "docker compose logs -f",
     "migrate": "docker compose exec api npm run migrate -w @blackbox/api",
     "seed": "docker compose exec api npm run seed -w @blackbox/api",
     "psql": "docker compose exec db psql -U blackbox -d blackbox",
-    "logs": "docker compose logs -f api"
+    "typecheck": "npm run typecheck -w @blackbox/api && npm run typecheck -w @blackbox/web"
   }
 }

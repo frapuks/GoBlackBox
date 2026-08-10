@@ -1,18 +1,16 @@
-# Environnement de DEV local.
-# Les 3 services tournent, le code est monté en bind-mount et rechargé à chaud.
-# Les Dockerfiles de production arriveront à l'étape 8.
+# BLACKBOX — une seule stack, identique en local et sur le Raspberry Pi.
+#
+#   docker compose up -d --build
+#
+# Ports publiés sur l'hôte :
+#   6012 → front  (la seule cible à déclarer dans Nginx Proxy Manager)
+#   4012 → API    (accès direct, pour diagnostiquer)
+#   5012 → Postgres
+#
+# Le Nginx du conteneur `web` sert le front ET relaie /api vers l'API : les deux
+# partagent la même origine, donc le cookie de session fonctionne sans CORS.
 
-x-node-volumes: &node-volumes
-  # Le code, monté en direct pour le hot reload.
-  - .:/app
-  # Les node_modules vivent dans des volumes Docker, pas sur l'hôte : ils
-  # masquent le bind-mount ci-dessus, donc les binaires natifs installés pour
-  # Linux ne sont jamais écrasés par ceux installés pour Windows.
-  # npm workspaces hoiste tout à la racine, d'où le volume partagé.
-  - root_modules:/app/node_modules
-  - api_modules:/app/apps/api/node_modules
-  - web_modules:/app/apps/web/node_modules
-  - shared_modules:/app/packages/shared/node_modules
+name: blackbox
 
 services:
   db:
@@ -24,61 +22,54 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    # Volontairement AUCUN port publié : la base n'est joignable que depuis
-    # le réseau interne Docker. Décommente uniquement pour brancher un DBeaver.
-    # ports:
-    #   - "5432:5432"
+    ports:
+      # ⚠ La base devient joignable depuis tout le réseau local. Pour la
+      # réserver à la machine hôte, remplacer par "127.0.0.1:5012:5432".
+      - "5012:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 10
 
-  # Service éphémère : installe les dépendances UNE SEULE FOIS, puis se termine.
-  # api et web partagent le même /app/node_modules ; les laisser lancer chacun
-  # leur `npm install` en parallèle corrompt l'arbre de dépendances.
-  install:
-    image: node:22-alpine
-    working_dir: /app
-    command: npm install --no-audit --no-fund
-    volumes: *node-volumes
-
   api:
-    image: node:22-alpine
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
-    working_dir: /app
-    command: sh -c "npm run migrate -w @blackbox/api && npm run dev -w @blackbox/api"
     environment:
-      NODE_ENV: development
+      # Seule différence entre local et Pi, et elle vit dans .env :
+      #   development → cookie non-Secure (indispensable en http://localhost)
+      #                 + logs lisibles + `npm run seed` autorisé
+      #   production  → cookie Secure, logs JSON, seed refusé
+      NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
-    volumes: *node-volumes
     ports:
-      - "3000:3000"
+      - "4012:3000"
     depends_on:
       db:
         condition: service_healthy
-      install:
-        condition: service_completed_successfully
+    # Sans ce healthcheck, Nginx démarre avant que Fastify n'écoute et renvoie
+    # des 502 pendant les premières secondes — très visible au redémarrage du Pi.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
   web:
-    image: node:22-alpine
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
     restart: unless-stopped
-    working_dir: /app
-    command: npm run dev -w @blackbox/web
-    environment:
-      NODE_ENV: development
-    volumes: *node-volumes
     ports:
-      - "5173:5173"
+      - "6012:80"
     depends_on:
-      install:
-        condition: service_completed_successfully
+      api:
+        condition: service_healthy
 
 volumes:
   pgdata:
-  root_modules:
-  api_modules:
-  web_modules:
-  shared_modules:

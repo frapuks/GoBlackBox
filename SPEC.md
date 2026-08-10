@@ -44,12 +44,18 @@ GoBlackBox/
 
 ### Docker
 
+**Un seul `docker-compose.yml`**, identique en local et sur le Pi.
+
 ```yaml
 services:
-  db:   postgres:16-alpine   # volume nommé, AUCUN port exposé sur l'hôte
-  api:  node:22-alpine       # Fastify, port 3000
-  web:  nginx:alpine         # build Vite statique, port 80
+  db:   postgres:16-alpine   # volume nommé, publié sur 5012
+  api:  build apps/api       # Fastify, publié sur 4012
+  web:  build apps/web       # nginx + build Vite, publié sur 6012
 ```
+
+Seule différence entre les deux environnements : `NODE_ENV`, dans `.env`.
+Il pilote le drapeau `Secure` du cookie de session (impossible en
+`http://localhost`), le format des logs et l'autorisation du seed.
 
 - Build context = **racine du repo** (sinon `packages/shared` est invisible).
 - `healthcheck` sur `db` + `depends_on: service_healthy` sur `api`.

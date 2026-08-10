@@ -2,56 +2,72 @@
 
 Caisse noire d'équipe de handball. Voir [SPEC.md](SPEC.md) pour la spécification V1.
 
-## Lancer en local
+## Lancer
+
+Une seule stack, identique en local et sur le Raspberry Pi.
 
 ```bash
 cp .env.example .env      # une seule fois
-docker compose up
+docker compose up -d --build
 ```
 
-- Front : http://localhost:5173
-- API : http://localhost:3000/api/health
+- Front : http://localhost:6012
+- API : http://localhost:6012/api/health
 
-Le premier démarrage prend quelques minutes (`npm install` dans les conteneurs).
-Les dépendances sont ensuite mises en cache dans des volumes Docker, les
-démarrages suivants sont quasi instantanés.
+| Service | Port | Rôle |
+|---|---|---|
+| `web` | **6012** | Front + relais `/api`. **La seule cible à déclarer dans NPM** |
+| `api` | 4012 | Accès direct à l'API, pour diagnostiquer |
+| `db` | 5012 | PostgreSQL |
 
-Le hot reload fonctionne : modifier un fichier dans `apps/` recharge
-automatiquement l'API (tsx watch) ou le front (Vite HMR).
+Le Nginx du conteneur `web` sert le front **et** relaie `/api` vers l'API : les
+deux partagent la même origine, donc le cookie de session fonctionne sans
+configuration CORS. Déclarer le seul port 6012 dans NPM suffit.
+
+⚠ Les ports 4012 et 5012 sont publiés sur toutes les interfaces : l'API et la
+base sont joignables depuis tout le réseau local. Pour les réserver à la machine
+elle-même, préfixer par `127.0.0.1:` dans `docker-compose.yml`.
+
+### La seule différence entre local et Pi
+
+`NODE_ENV`, dans `.env` :
+
+| | `development` (local) | `production` (Pi) |
+|---|---|---|
+| Cookie de session | non-`Secure` | `Secure` |
+| Logs | lisibles | JSON |
+| `npm run seed` | autorisé | refusé |
+
+En local l'app est servie en `http://localhost:6012`, sans TLS : avec
+`NODE_ENV=production` le navigateur **refuse** le cookie `Secure` et la
+connexion échoue sans message d'erreur. Sur le Pi, NPM termine le TLS et le
+navigateur voit du HTTPS, donc `Secure` est correct — et nécessaire.
+
+### Pendant le développement
+
+Il n'y a pas de rechargement à chaud : les images embarquent le code compilé.
+Après une modification, reconstruire le service concerné.
+
+```bash
+docker compose up -d --build web    # après une modif du front
+docker compose up -d --build api    # après une modif de l'API
+npm run typecheck                   # sans passer par Docker, instantané
+```
 
 ## Commandes
 
 | Commande | Effet |
 |---|---|
-| `npm run up` | Démarre les 3 services |
+| `npm run up` | Construit et démarre les 3 services |
 | `npm run down` | Arrête tout (les données sont conservées) |
 | `npm run reset` | **Supprime la base** et repart de zéro |
 | `npm run migrate` | Applique les migrations en attente |
-| `npm run seed` | **Remplace** les amendes et les participants sans compte par un jeu de démo (17 joueurs, 9 règles, 70 amendes). Dev uniquement |
-| `npm run deps` | Réinstalle les dépendances après un ajout dans un `package.json` |
+| `npm run seed` | **Remplace** les amendes et les participants sans compte par un jeu de démo (17 joueurs, 9 règles, 70 amendes). `NODE_ENV=development` uniquement |
 | `npm run psql` | Ouvre un psql sur la base |
-| `npm run logs` | Suit les logs de l'API |
+| `npm run logs` | Suit les logs des 3 services |
+| `npm run typecheck` | Vérifie les types de l'API et du front |
 
-Les migrations sont aussi appliquées automatiquement au démarrage du conteneur
-`api`, donc `npm run migrate` ne sert qu'à les rejouer sans redémarrer.
-
-## Services
-
-| Service | Port | Rôle |
-|---|---|---|
-| `db` | *(non publié)* | PostgreSQL 16. Joignable uniquement depuis le réseau Docker |
-| `api` | 3000 | Fastify, toutes les routes sous `/api` |
-| `web` | 5173 | Vite en dev, avec proxy `/api` → `api:3000` |
-| `install` | — | Service éphémère : installe les dépendances puis se termine |
-
-`api` et `web` partagent le même `/app/node_modules` (npm workspaces hoiste tout
-à la racine). C'est pour ça que l'installation est isolée dans le service
-`install` : deux `npm install` concurrents sur le même volume corrompent l'arbre
-de dépendances. Après avoir ajouté un paquet dans un `package.json`, lance
-`npm run deps`.
-
-Les routes sont sous `/api` en dev **comme** en prod : le proxy Vite et le
-Nginx Proxy Manager pointent sur le même chemin, il n'y a rien à réécrire.
+Les migrations sont appliquées automatiquement au démarrage du conteneur `api`.
 
 ## Ajouter une migration
 
@@ -63,36 +79,22 @@ migration commitée** : pour corriger, ajouter un nouveau fichier.
 ## Déploiement sur le Raspberry Pi
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build
+git pull
+docker compose up -d --build
 ```
 
-| Service | Port hôte | Rôle |
-|---|---|---|
-| `web` | **6012** | Front + relais `/api`. **La seule cible à déclarer dans NPM** |
-| `api` | 4012 | Accès direct à l'API, pour diagnostiquer |
-| `db` | 5012 | PostgreSQL |
-
-Le Nginx du conteneur `web` sert le front **et** relaie `/api` vers l'API : les
-deux partagent donc la même origine, et le cookie de session fonctionne sans
-configuration CORS. Déclarer le seul port 6012 dans NPM suffit à faire tourner
-l'application.
-
-⚠ Les ports 4012 et 5012 sont publiés sur toutes les interfaces : l'API et la
-base sont joignables depuis tout le réseau local. Pour les réserver au Pi
-lui-même, préfixer par `127.0.0.1:` dans `docker-compose.prod.yml`.
-
-Avant le premier démarrage, dans `.env` :
+Avant le tout premier démarrage, dans `.env` :
 
 ```bash
 POSTGRES_PASSWORD=<un mot de passe long>
 JWT_SECRET=$(openssl rand -hex 32)
+NODE_ENV=production
 ```
 
-Puis **crée ton compte immédiatement** sur `https://ton-domaine/signup`
-(ou `http://<ip-du-pi>:6012/signup`) : tant que
-la table `users` est vide, le premier venu devient administrateur sans code.
-Ensuite, va dans Réglages → Administration régénérer le code d'invitation
-(sa valeur initiale est `CHANGEME`) et distribue-le à l'équipe.
+Puis **crée ton compte immédiatement** sur `https://ton-domaine/signup` : tant
+que la table `users` est vide, le premier venu devient administrateur sans code.
+Ensuite, Réglages → Administration pour régénérer le code d'invitation (sa
+valeur initiale est `CHANGEME`) et le distribuer à l'équipe.
 
 Les images se construisent plus vite sur ton PC que sur le Pi :
 
