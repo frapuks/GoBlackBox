@@ -1,0 +1,19 @@
+{
+  "name": "goblackbox",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "up": "docker compose up",
+    "deps": "docker compose run --rm install",
+    "down": "docker compose down",
+    "reset": "docker compose down -v && docker compose up",
+    "migrate": "docker compose exec api npm run migrate -w @blackbox/api",
+    "seed": "docker compose exec api npm run seed -w @blackbox/api",
+    "psql": "docker compose exec db psql -U blackbox -d blackbox",
+    "logs": "docker compose logs -f api"
+  }
+}

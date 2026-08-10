@@ -1,0 +1,84 @@
+# Environnement de DEV local.
+# Les 3 services tournent, le code est monté en bind-mount et rechargé à chaud.
+# Les Dockerfiles de production arriveront à l'étape 8.
+
+x-node-volumes: &node-volumes
+  # Le code, monté en direct pour le hot reload.
+  - .:/app
+  # Les node_modules vivent dans des volumes Docker, pas sur l'hôte : ils
+  # masquent le bind-mount ci-dessus, donc les binaires natifs installés pour
+  # Linux ne sont jamais écrasés par ceux installés pour Windows.
+  # npm workspaces hoiste tout à la racine, d'où le volume partagé.
+  - root_modules:/app/node_modules
+  - api_modules:/app/apps/api/node_modules
+  - web_modules:/app/apps/web/node_modules
+  - shared_modules:/app/packages/shared/node_modules
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Volontairement AUCUN port publié : la base n'est joignable que depuis
+    # le réseau interne Docker. Décommente uniquement pour brancher un DBeaver.
+    # ports:
+    #   - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Service éphémère : installe les dépendances UNE SEULE FOIS, puis se termine.
+  # api et web partagent le même /app/node_modules ; les laisser lancer chacun
+  # leur `npm install` en parallèle corrompt l'arbre de dépendances.
+  install:
+    image: node:22-alpine
+    working_dir: /app
+    command: npm install --no-audit --no-fund
+    volumes: *node-volumes
+
+  api:
+    image: node:22-alpine
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "npm run migrate -w @blackbox/api && npm run dev -w @blackbox/api"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+    volumes: *node-volumes
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      install:
+        condition: service_completed_successfully
+
+  web:
+    image: node:22-alpine
+    restart: unless-stopped
+    working_dir: /app
+    command: npm run dev -w @blackbox/web
+    environment:
+      NODE_ENV: development
+    volumes: *node-volumes
+    ports:
+      - "5173:5173"
+    depends_on:
+      install:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
+  root_modules:
+  api_modules:
+  web_modules:
+  shared_modules:

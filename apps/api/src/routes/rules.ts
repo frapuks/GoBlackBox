@@ -1,0 +1,149 @@
+import type { FastifyPluginAsync } from 'fastify'
+import {
+  createRuleInput,
+  updateRuleInput,
+  type ApplyRuleResult,
+  type Rule,
+  type RuleKind,
+} from '@blackbox/shared'
+import { query, queryOne, transaction } from '../db.js'
+import { IS_LATE_SQL } from '../queries.js'
+
+type RuleRow = {
+  id: number
+  label: string
+  description: string | null
+  amount: number
+  kind: RuleKind
+  archived_at: Date | null
+  last_applied_at: Date | null
+}
+
+const toRule = (r: RuleRow): Rule => ({
+  id: r.id,
+  label: r.label,
+  description: r.description,
+  amount: r.amount,
+  kind: r.kind,
+  archivedAt: r.archived_at ? r.archived_at.toISOString() : null,
+  lastAppliedAt: r.last_applied_at ? r.last_applied_at.toISOString() : null,
+})
+
+const SELECT = `
+  SELECT r.id, r.label, r.description, r.amount, r.kind, r.archived_at,
+         (SELECT MAX(f.created_at) FROM fines f WHERE f.rule_id = r.id) AS last_applied_at
+    FROM rules r`
+
+export const ruleRoutes: FastifyPluginAsync = async (app) => {
+  const auth = { preHandler: [app.requireAuth, app.requireMember] }
+  const staff = {
+    preHandler: [app.requireAuth, app.requireMember, app.requireRole('ADMIN', 'MANAGER')],
+  }
+
+  app.get('/rules', auth, async (req): Promise<Rule[]> => {
+    const includeArchived = (req.query as { archived?: string }).archived === '1'
+    const rows = await query<RuleRow>(
+      `${SELECT}
+        ${includeArchived ? '' : 'WHERE r.archived_at IS NULL'}
+        ORDER BY r.archived_at NULLS FIRST, r.amount DESC, r.label`,
+    )
+    return rows.map(toRule)
+  })
+
+  app.post('/rules', staff, async (req, reply): Promise<Rule> => {
+    const body = createRuleInput.parse(req.body)
+    const row = await queryOne<RuleRow>(
+      `INSERT INTO rules (label, description, amount, kind)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, label, description, amount, kind, archived_at, NULL::timestamptz AS last_applied_at`,
+      [body.label, body.description ?? null, body.amount, body.kind],
+    )
+    reply.code(201)
+    return toRule(row!)
+  })
+
+  app.patch('/rules/:id', staff, async (req): Promise<Rule> => {
+    const id = Number((req.params as { id: string }).id)
+    if (!Number.isInteger(id) || id <= 0) throw app.httpErrors.badRequest('Identifiant invalide')
+
+    const body = updateRuleInput.parse(req.body)
+
+    // Modifier une règle ne touche PAS aux amendes déjà posées : leurs amount
+    // et label sont des copies. Changer un tarif en janvier ne réécrit pas
+    // l'historique de septembre.
+    const row = await queryOne<RuleRow>(
+      `UPDATE rules
+          SET label       = COALESCE($2, label),
+              description = CASE WHEN $3::boolean THEN $4 ELSE description END,
+              amount      = COALESCE($5, amount),
+              archived_at = CASE
+                              WHEN $6::boolean IS NULL THEN archived_at
+                              WHEN $6::boolean THEN COALESCE(archived_at, NOW())
+                              ELSE NULL
+                            END
+        WHERE id = $1
+        RETURNING id, label, description, amount, kind, archived_at,
+                  (SELECT MAX(f.created_at) FROM fines f WHERE f.rule_id = rules.id)
+                    AS last_applied_at`,
+      [
+        id,
+        body.label ?? null,
+        body.description !== undefined,
+        body.description ?? null,
+        body.amount ?? null,
+        body.archived ?? null,
+      ],
+    )
+    if (!row) throw app.httpErrors.notFound('Règle introuvable')
+    return toRule(row)
+  })
+
+  /**
+   * Applique une règle en un clic, en une transaction.
+   *
+   * La CIBLE se déduit de la nature de la règle et n'est jamais envoyée par le
+   * client : DUES vise toute l'équipe, PENALTY les seuls retardataires.
+   * Un front pas à jour ne peut donc pas débiter les mauvaises personnes.
+   */
+  app.post('/rules/:id/apply', staff, async (req): Promise<ApplyRuleResult> => {
+    const id = Number((req.params as { id: string }).id)
+    if (!Number.isInteger(id) || id <= 0) throw app.httpErrors.badRequest('Identifiant invalide')
+
+    const authorMemberId = req.currentUser.memberId!
+
+    const created = await transaction(async (client) => {
+      const { rows: rules } = await client.query<{
+        label: string
+        amount: number
+        kind: RuleKind
+      }>('SELECT label, amount, kind FROM rules WHERE id = $1 AND archived_at IS NULL', [id])
+      if (!rules.length) throw app.httpErrors.notFound('Règle inconnue ou archivée')
+
+      const rule = rules[0]!
+      if (rule.kind === 'FINE') {
+        throw app.httpErrors.badRequest(
+          "Une règle d'infraction se donne depuis l'écran d'ajout d'amende",
+        )
+      }
+
+      // Le sous-SELECT est évalué sur l'état d'AVANT l'insertion : les amendes
+      // créées par cette requête ne rendent donc personne éligible en cascade.
+      const targetFilter =
+        rule.kind === 'PENALTY'
+          ? `WHERE EXISTS (
+               SELECT 1 FROM fines f CROSS JOIN settings s
+                WHERE f.member_id = m.id AND ${IS_LATE_SQL}
+             )`
+          : ''
+
+      const { rowCount } = await client.query(
+        `INSERT INTO fines (member_id, rule_id, amount, label, created_by)
+         SELECT m.id, $1, $2, $3, $4 FROM members m ${targetFilter}`,
+        [id, rule.amount, rule.label, authorMemberId],
+      )
+      return rowCount ?? 0
+    })
+
+    return { created }
+  })
+}

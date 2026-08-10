@@ -1,0 +1,72 @@
+# Production — Raspberry Pi.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Ports publiés sur l'hôte :
+#   6012 → front  (la cible à déclarer dans Nginx Proxy Manager)
+#   4012 → API    (accès direct, hors du proxy du front)
+#   5012 → Postgres
+#
+# Le front sert les fichiers ET relaie /api vers l'API : front et API partagent
+# donc la même origine, et le cookie de session fonctionne sans CORS. Déclarer
+# le seul port 6012 dans NPM suffit à faire tourner l'application.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # ⚠ La base devient joignable depuis tout le réseau local. Pour la
+      # réserver au Pi lui-même, remplacer par "127.0.0.1:5012:5432".
+      - "5012:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      # Le front n'en a pas besoin (il passe par le réseau Docker), c'est un
+      # accès direct pour diagnostiquer : http://<pi>:4012/api/health
+      - "4012:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    # Sans ce healthcheck, nginx démarre avant que Fastify n'écoute et renvoie
+    # des 502 pendant les premières secondes — très visible au redémarrage du Pi.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "6012:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
