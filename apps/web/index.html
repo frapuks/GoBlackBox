@@ -4,7 +4,28 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0B0E11" />
+    <meta name="description" content="Suivi des amendes de l'équipe tout au long de la saison." />
+
     <title>BLACKBOX</title>
+
+    <!--
+      Sans ces deux balises, iOS traite le raccourci de l'écran d'accueil comme
+      un simple marque-page : chaque changement de page rouvre la surcouche
+      Safari (bouton fermer, barre d'URL, boutons de partage).
+      Elles sont lues UNE SEULE FOIS, au moment où le raccourci est créé —
+      après modification, il faut le supprimer et le rajouter.
+    -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- Le contenu passe sous la barre d'état ; les marges `safe-area-inset`
+         du thème se chargent déjà de ne rien laisser dessous. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="BLACKBOX" />
+
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
   </head>
   <body>
     <div id="root"></div>

@@ -310,9 +310,85 @@ du layout à onglets.
 
 ## 8. Hors périmètre V1 → V2
 
-Amende personnalisée (montant libre) · cotisations **automatiques** (échéancier,
-rappels) · poste des joueurs · saisons ·
-photos de profil · mot de passe oublié par email · notifications push · export CSV/PDF · contestation d'amende ·
-statistiques et graphiques · PWA offline · historique d'audit ·
-amendes récurrentes · paiement en ligne · mode clair ·
-transfert du rôle ADMIN
+Amende personnalisée (montant libre) · cotisations **automatiques** (échéancier)
+· poste des joueurs · saisons · photos de profil · mot de passe oublié par
+email · export CSV/PDF · contestation d'amende · statistiques et graphiques ·
+historique d'audit · paiement en ligne · mode clair · transfert du rôle ADMIN
+
+---
+
+## 9. V2 — PWA et notifications
+
+Les deux sujets ne sont pas indépendants : **les notifications exigent un
+service worker**, donc la PWA est un prérequis, pas une option parallèle.
+
+### 9.1 Vraie PWA
+
+L'app est aujourd'hui *installable* (manifeste + métadonnées Apple) mais pas
+une PWA : sans service worker, aucun fonctionnement hors ligne et, sur Android,
+Chrome peut se contenter d'un raccourci au lieu d'un WebAPK.
+
+À faire :
+
+- **Service worker en `network-first`** pour le HTML et les appels `/api`,
+  `cache-first` pour `/assets/` (noms de fichiers empreintés, donc immuables).
+- **Écran hors-ligne** plutôt que le dinosaure de Chrome quand le Pi ne répond
+  pas. Les données restent en lecture seule depuis le cache TanStack Query.
+- **Flux de mise à jour explicite** : `skipWaiting` + bandeau « nouvelle version
+  disponible, recharger ». C'est le point le plus risqué du chantier — un cache
+  mal réglé sert une version périmée pendant des jours après un déploiement, et
+  se répare mal à distance.
+- Vérifier l'installation en WebAPK sur Android (tiroir d'applications, absence
+  de barre d'adresse).
+
+### 9.2 Notifications push
+
+Web Push standard (VAPID), pas de service tiers : le Pi envoie directement aux
+serveurs de push de Google et Apple.
+
+**Contraintes à connaître**
+
+- **iOS ≥ 16.4 uniquement**, et **seulement si l'app est installée** sur
+  l'écran d'accueil. Un joueur qui consulte dans Safari ne recevra rien.
+- La permission doit être demandée **depuis un geste utilisateur** (un bouton
+  dans les réglages), jamais au chargement — sinon iOS refuse en silence.
+- Un utilisateur = plusieurs appareils. On stocke des abonnements, pas un jeton
+  par compte.
+
+**Schéma**
+
+```sql
+push_subscriptions
+  id, user_id → users(id) ON DELETE CASCADE,
+  endpoint TEXT UNIQUE,      -- identifie l'appareil
+  p256dh   TEXT,             -- clés de chiffrement du payload
+  auth     TEXT,
+  created_at, last_seen_at
+```
+
+Un endpoint qui répond 404/410 est supprimé automatiquement : c'est ainsi qu'on
+nettoie les appareils désinstallés, il n'y a pas d'autre signal.
+
+**Nouvelles variables d'environnement** : `VAPID_PUBLIC_KEY`,
+`VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. Générées une fois, à ne jamais changer —
+tout changement invalide l'ensemble des abonnements existants.
+
+**Événements déclencheurs** — à arbitrer :
+
+| Événement | Destinataire |
+|---|---|
+| Une amende m'est donnée | le joueur concerné |
+| Mon amende passe « en retard » | le joueur concerné |
+| Une cotisation est appliquée | toute l'équipe |
+| Mon amende est cochée payée | le joueur concerné |
+| Récapitulatif hebdomadaire des impayés | admin / gestionnaires |
+
+Les deux dernières lignes du tableau supposent un **déclencheur planifié** : le
+passage « en retard » n'est aujourd'hui qu'un calcul à la volée, personne ne
+« l'observe ». Il faudra une tâche périodique (un `setInterval` dans l'API, ou
+un service `cron` à part) — c'est une brique nouvelle, pas une simple route.
+
+**Préférences** : au minimum un interrupteur global par compte dans les
+réglages. Un réglage par type d'événement est possible, mais alourdit le
+schéma et l'écran.
+
