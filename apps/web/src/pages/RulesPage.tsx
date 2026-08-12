@@ -19,7 +19,13 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import GroupsIcon from '@mui/icons-material/Groups'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import ScheduleIcon from '@mui/icons-material/Schedule'
-import type { Rule, RuleKind } from '@blackbox/shared'
+import {
+  RULE_CONTEXTS,
+  RULE_CONTEXT_LABEL,
+  type Rule,
+  type RuleContext,
+  type RuleKind,
+} from '@blackbox/shared'
 import {
   useApplyRule,
   useCreateRule,
@@ -31,6 +37,7 @@ import {
   useUpdateSettings,
 } from '../api/hooks'
 import { Amount, Card, EmptyState, SectionTitle, formatDate } from '../components/ui'
+import { ToggleButton, ToggleButtonGroup } from '@mui/material'
 import { palette } from '../theme'
 
 /** Ce que la boîte de dialogue est en train d'éditer. */
@@ -88,46 +95,59 @@ export const RulesPage = () => {
         onAdd={isStaff ? () => setEditing({ create: 'FINE' }) : undefined}
       />
 
-      <Box>
-        {fines.length === 0 && <EmptyState>Aucune règle</EmptyState>}
+      {fines.length === 0 && <EmptyState>Aucune règle</EmptyState>}
 
-        <Stack spacing={1}>
-          {fines.map((r) => {
-            const archived = r.archivedAt !== null
-            return (
-              <Card
-                key={r.id}
-                sx={{ display: 'flex', alignItems: 'center', gap: 2, opacity: archived ? 0.45 : 1 }}
-              >
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography
-                      sx={{ fontFamily: '"Archivo Narrow", sans-serif', fontWeight: 600 }}
-                      textTransform="uppercase"
-                    >
-                      {r.label}
-                    </Typography>
-                    {archived && <Chip size="small" label="Archivée" sx={{ height: 20 }} />}
-                  </Stack>
-                  {r.description && (
-                    <Typography variant="body2" color="text.secondary">
-                      {r.description}
-                    </Typography>
-                  )}
-                </Box>
+      {RULE_CONTEXTS.filter((c) => fines.some((r) => r.context === c)).map((context) => (
+        <Box key={context} sx={{ mb: 2 }}>
+          <Typography variant="overline" color="text.secondary">
+            {RULE_CONTEXT_LABEL[context]}
+          </Typography>
 
-                <Amount amount={r.amount} state="due" size="lg" />
+          <Stack spacing={1} sx={{ mt: 0.5 }}>
+            {fines
+              .filter((r) => r.context === context)
+              .map((r) => {
+                const archived = r.archivedAt !== null
+                return (
+                  <Card
+                    key={r.id}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 2,
+                      opacity: archived ? 0.45 : 1,
+                    }}
+                  >
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography
+                          sx={{ fontFamily: '"Archivo Narrow", sans-serif', fontWeight: 600 }}
+                          textTransform="uppercase"
+                        >
+                          {r.label}
+                        </Typography>
+                        {archived && <Chip size="small" label="Archivée" sx={{ height: 20 }} />}
+                      </Stack>
+                      {r.description && (
+                        <Typography variant="body2" color="text.secondary">
+                          {r.description}
+                        </Typography>
+                      )}
+                    </Box>
 
-                {isStaff && (
-                  <IconButton size="small" aria-label="Modifier" onClick={() => setEditing(r)}>
-                    <EditOutlinedIcon fontSize="small" />
-                  </IconButton>
-                )}
-              </Card>
-            )
-          })}
-        </Stack>
-      </Box>
+                    <Amount amount={r.amount} state="due" size="lg" />
+
+                    {isStaff && (
+                      <IconButton size="small" aria-label="Modifier" onClick={() => setEditing(r)}>
+                        <EditOutlinedIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Card>
+                )
+              })}
+          </Stack>
+        </Box>
+      ))}
 
       <FormControlLabel
         sx={{ mt: 2 }}
@@ -355,6 +375,7 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
   const [label, setLabel] = useState('')
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('5')
+  const [context, setContext] = useState<RuleContext>('OTHER')
   const [archived, setArchived] = useState(false)
 
   // Recharge le formulaire à chaque ouverture, sinon on repart des valeurs
@@ -364,6 +385,7 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
     setLabel(rule?.label ?? '')
     setDescription(rule?.description ?? '')
     setAmount(String(rule?.amount ?? (isDues ? 20 : 5)))
+    setContext(rule?.context ?? 'OTHER')
     setArchived(rule?.archivedAt != null)
   }, [target, rule, isDues])
 
@@ -380,13 +402,14 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
           label,
           description: description || null,
           amount: Number(amount),
+          context,
           archived,
         },
         { onSuccess: onClose },
       )
     } else {
       createRule.mutate(
-        { label, description: description || undefined, amount: Number(amount), kind },
+        { label, description: description || undefined, amount: Number(amount), kind, context },
         { onSuccess: onClose },
       )
     }
@@ -439,6 +462,30 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
                   : '0 € possible : décris alors la sanction dans la description'
             }
           />
+
+          {kind === 'FINE' && (
+            <Stack spacing={0.5}>
+              <Typography variant="overline" color="text.secondary">
+                Contexte
+              </Typography>
+              <ToggleButtonGroup
+                exclusive
+                fullWidth
+                size="small"
+                value={context}
+                onChange={(_, v: RuleContext | null) => v && setContext(v)}
+              >
+                {RULE_CONTEXTS.map((c) => (
+                  <ToggleButton key={c} value={c}>
+                    {RULE_CONTEXT_LABEL[c]}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+              <Typography variant="caption" color="text.secondary">
+                Détermine à quel moment la règle est proposée à la saisie.
+              </Typography>
+            </Stack>
+          )}
 
           {rule && (
             <>

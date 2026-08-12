@@ -96,17 +96,34 @@ export const RULE_KINDS = ['FINE', 'DUES', 'PENALTY'] as const
 export const ruleKindSchema = z.enum(RULE_KINDS)
 export type RuleKind = z.infer<typeof ruleKindSchema>
 
+/**
+ * Contexte d'application d'une règle. Une règle appartient à exactement un
+ * contexte : c'est ce qui permet de ne proposer, au moment de la saisie, que
+ * les règles pertinentes là où on se trouve.
+ */
+export const RULE_CONTEXTS = ['MATCH', 'TRAINING', 'OTHER'] as const
+export const ruleContextSchema = z.enum(RULE_CONTEXTS)
+export type RuleContext = z.infer<typeof ruleContextSchema>
+
+export const RULE_CONTEXT_LABEL: Record<RuleContext, string> = {
+  MATCH: 'Match',
+  TRAINING: 'Entraînement',
+  OTHER: 'Autres',
+}
+
 export const createRuleInput = z.object({
   label: nameSchema,
   description: z.string().trim().max(300).optional(),
   amount: amountSchema,
   kind: ruleKindSchema.default('FINE'),
+  context: ruleContextSchema.default('OTHER'),
 })
 
 export const updateRuleInput = z.object({
   label: nameSchema.optional(),
   description: z.string().trim().max(300).nullable().optional(),
   amount: amountSchema.optional(),
+  context: ruleContextSchema.optional(),
   archived: z.boolean().optional(),
 })
 
@@ -116,6 +133,7 @@ export type Rule = {
   description: string | null
   amount: number
   kind: RuleKind
+  context: RuleContext
   archivedAt: string | null
   /** Dernière fois que cette règle a été appliquée. Sert à ne pas cotiser deux fois. */
   lastAppliedAt: string | null

@@ -4,6 +4,7 @@ import {
   updateRuleInput,
   type ApplyRuleResult,
   type Rule,
+  type RuleContext,
   type RuleKind,
 } from '@blackbox/shared'
 import { query, queryOne, transaction } from '../db.js'
@@ -15,6 +16,7 @@ type RuleRow = {
   description: string | null
   amount: number
   kind: RuleKind
+  context: RuleContext
   archived_at: Date | null
   last_applied_at: Date | null
 }
@@ -25,12 +27,13 @@ const toRule = (r: RuleRow): Rule => ({
   description: r.description,
   amount: r.amount,
   kind: r.kind,
+  context: r.context,
   archivedAt: r.archived_at ? r.archived_at.toISOString() : null,
   lastAppliedAt: r.last_applied_at ? r.last_applied_at.toISOString() : null,
 })
 
 const SELECT = `
-  SELECT r.id, r.label, r.description, r.amount, r.kind, r.archived_at,
+  SELECT r.id, r.label, r.description, r.amount, r.kind, r.context, r.archived_at,
          (SELECT MAX(f.created_at) FROM fines f WHERE f.rule_id = r.id) AS last_applied_at
     FROM rules r`
 
@@ -53,10 +56,11 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
   app.post('/rules', staff, async (req, reply): Promise<Rule> => {
     const body = createRuleInput.parse(req.body)
     const row = await queryOne<RuleRow>(
-      `INSERT INTO rules (label, description, amount, kind)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, label, description, amount, kind, archived_at, NULL::timestamptz AS last_applied_at`,
-      [body.label, body.description ?? null, body.amount, body.kind],
+      `INSERT INTO rules (label, description, amount, kind, context)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, label, description, amount, kind, context, archived_at,
+                 NULL::timestamptz AS last_applied_at`,
+      [body.label, body.description ?? null, body.amount, body.kind, body.context],
     )
     reply.code(201)
     return toRule(row!)
@@ -76,13 +80,14 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
           SET label       = COALESCE($2, label),
               description = CASE WHEN $3::boolean THEN $4 ELSE description END,
               amount      = COALESCE($5, amount),
+              context     = COALESCE($7, context),
               archived_at = CASE
                               WHEN $6::boolean IS NULL THEN archived_at
                               WHEN $6::boolean THEN COALESCE(archived_at, NOW())
                               ELSE NULL
                             END
         WHERE id = $1
-        RETURNING id, label, description, amount, kind, archived_at,
+        RETURNING id, label, description, amount, kind, context, archived_at,
                   (SELECT MAX(f.created_at) FROM fines f WHERE f.rule_id = rules.id)
                     AS last_applied_at`,
       [
@@ -92,6 +97,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
         body.description ?? null,
         body.amount ?? null,
         body.archived ?? null,
+        body.context ?? null,
       ],
     )
     if (!row) throw app.httpErrors.notFound('Règle introuvable')

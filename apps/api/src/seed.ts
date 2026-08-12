@@ -30,15 +30,15 @@ const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.le
 const range = (min: number, max: number) => min + Math.floor(random() * (max - min + 1))
 
 const RULES = [
-  ['Retard vestiaire', "Moins de 15 minutes avant le début de l'échauffement", 5],
-  ['Absence entraînement', "Absence non justifiée moins de 24 h à l'avance", 10],
-  ['Oubli matériel', 'Chasuble, gourde ou short non officiel', 2],
-  ['Carton rouge', "Exclusion directe lors d'un match officiel", 15],
-  ['Carton jaune', 'Avertissement en match officiel', 3],
-  ['Téléphone en réunion', 'Sonnerie pendant le débrief', 5],
-  ['Tir raté sur but vide', 'Sans commentaire', 5],
-  ['Moins de 25 buts', "Performance collective insuffisante : tournée du coach", 0],
-  ['Anniversaire', "Le traditionnel gâteau pour l'équipe", 0],
+  ['Retard vestiaire', "Moins de 15 minutes avant le début de l'échauffement", 5, 'MATCH'],
+  ['Carton rouge', "Exclusion directe lors d'un match officiel", 15, 'MATCH'],
+  ['Carton jaune', 'Avertissement en match officiel', 3, 'MATCH'],
+  ['Tir raté sur but vide', 'Sans commentaire', 5, 'MATCH'],
+  ['Absence entraînement', "Absence non justifiée moins de 24 h à l'avance", 10, 'TRAINING'],
+  ['Oubli matériel', 'Chasuble, gourde ou short non officiel', 2, 'TRAINING'],
+  ['Téléphone en réunion', 'Sonnerie pendant le débrief', 5, 'TRAINING'],
+  ['Moins de 25 buts', 'Performance collective insuffisante : tournée du coach', 0, 'OTHER'],
+  ['Anniversaire', "Le traditionnel gâteau pour l'équipe", 0, 'OTHER'],
 ] as const
 
 const PLAYERS = [
@@ -60,10 +60,15 @@ const run = async () => {
     await client.query('DELETE FROM rules')
 
     const { rows: ruleRows } = await client.query<{ id: number }>(
-      `INSERT INTO rules (label, description, amount)
-       SELECT * FROM UNNEST($1::text[], $2::text[], $3::int[])
+      `INSERT INTO rules (label, description, amount, context)
+       SELECT * FROM UNNEST($1::text[], $2::text[], $3::int[], $4::text[])
        RETURNING id`,
-      [RULES.map((r) => r[0]), RULES.map((r) => r[1]), RULES.map((r) => r[2])],
+      [
+        RULES.map((r) => r[0]),
+        RULES.map((r) => r[1]),
+        RULES.map((r) => r[2]),
+        RULES.map((r) => r[3]),
+      ],
     )
 
     const { rows: kept } = await client.query<{ id: number }>(

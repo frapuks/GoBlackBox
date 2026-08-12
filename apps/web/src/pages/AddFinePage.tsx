@@ -1,24 +1,28 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  Box,
-  Button,
-  Container,
-  IconButton,
-  LinearProgress,
-  Stack,
-  Typography,
-} from '@mui/material'
+import { Box, Button, Container, IconButton, LinearProgress, Stack, Typography } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CloseIcon from '@mui/icons-material/Close'
+import SportsHandballIcon from '@mui/icons-material/SportsHandball'
+import FitnessCenterIcon from '@mui/icons-material/FitnessCenter'
+import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
+import { RULE_CONTEXTS, RULE_CONTEXT_LABEL, type RuleContext } from '@blackbox/shared'
 import { useAddFine, useMembers, useRules } from '../api/hooks'
 import { Amount, Card, Initials } from '../components/ui'
 import { pageSpacing, palette } from '../theme'
 
+const CONTEXT_ICON: Record<RuleContext, React.ReactNode> = {
+  MATCH: <SportsHandballIcon sx={{ fontSize: 40 }} />,
+  TRAINING: <FitnessCenterIcon sx={{ fontSize: 40 }} />,
+  OTHER: <MoreHorizIcon sx={{ fontSize: 40 }} />,
+}
+
 /**
  * L'écran le plus important de l'app : sélection tactile, zéro clavier.
- * Étape 1 un ou plusieurs joueurs, étape 2 la règle appliquée à tout le lot.
+ *   1. un ou plusieurs joueurs
+ *   2. le contexte — il détermine les règles proposées
+ *   3. la règle, appliquée à tout le lot
  * Pas de liste déroulante : on saisit debout, au bord du terrain.
  */
 export const AddFinePage = () => {
@@ -28,13 +32,23 @@ export const AddFinePage = () => {
   const addFine = useAddFine()
 
   const [selected, setSelected] = useState<number[]>([])
-  const [step, setStep] = useState<1 | 2>(1)
+  const [context, setContext] = useState<RuleContext | null>(null)
+  const [step, setStep] = useState<1 | 2 | 3>(1)
 
   const all = members.data ?? []
   const allSelected = all.length > 0 && selected.length === all.length
 
+  // Seules les règles du contexte choisi sont proposées : c'est tout l'intérêt
+  // de l'étape 2, la liste est divisée d'autant.
+  const contextRules = rules.data?.filter((r) => r.context === context) ?? []
+
   const toggle = (id: number) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+
+  const back = () => {
+    if (step === 1) navigate(-1)
+    else setStep((s) => (s === 3 ? 2 : 1))
+  }
 
   const submit = (ruleId: number) => {
     if (selected.length === 0) return
@@ -71,22 +85,17 @@ export const AddFinePage = () => {
       }}
     >
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-        {step === 1 ? (
-          <IconButton onClick={() => navigate(-1)} aria-label="Fermer">
-            <CloseIcon />
-          </IconButton>
-        ) : (
-          <IconButton onClick={() => setStep(1)} aria-label="Retour">
-            <ArrowBackIcon />
-          </IconButton>
-        )}
+        <IconButton onClick={back} aria-label={step === 1 ? 'Fermer' : 'Retour'}>
+          {step === 1 ? <CloseIcon /> : <ArrowBackIcon />}
+        </IconButton>
         <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
-          Étape {step} sur 2
+          Étape {step} sur 3
         </Typography>
       </Stack>
 
-      <LinearProgress variant="determinate" value={step === 1 ? 50 : 100} sx={{ mb: 3 }} />
+      <LinearProgress variant="determinate" value={(step / 3) * 100} sx={{ mb: 3 }} />
 
+      {/* ------------------------------------------------ 1 · les joueurs */}
       {step === 1 && (
         <>
           <Typography variant="h2" sx={{ mb: 0.5 }}>
@@ -143,11 +152,47 @@ export const AddFinePage = () => {
         </>
       )}
 
+      {/* ----------------------------------------------- 2 · le contexte */}
       {step === 2 && (
         <>
-          {/* « Appliquer » plutôt qu'« enfreinte » : les cotisations
-              apparaissent aussi ici, pour pouvoir rattraper un joueur arrivé
-              après l'application collective. */}
+          <Typography variant="h2" sx={{ mb: 0.5 }}>
+            ON EST OÙ ?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Le contexte détermine les règles proposées.
+          </Typography>
+
+          <Stack spacing={1.5}>
+            {RULE_CONTEXTS.map((c) => {
+              const count = rules.data?.filter((r) => r.context === c).length ?? 0
+              return (
+                <Card
+                  key={c}
+                  onClick={() => {
+                    setContext(c)
+                    setStep(3)
+                  }}
+                  sx={{ display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer', py: 3 }}
+                >
+                  <Box sx={{ color: palette.accent, display: 'flex' }}>{CONTEXT_ICON[c]}</Box>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography sx={{ fontFamily: '"Bebas Neue", sans-serif', fontSize: '1.5rem' }}>
+                      {RULE_CONTEXT_LABEL[c].toUpperCase()}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {count} règle{count > 1 ? 's' : ''}
+                    </Typography>
+                  </Box>
+                </Card>
+              )
+            })}
+          </Stack>
+        </>
+      )}
+
+      {/* -------------------------------------------------- 3 · la règle */}
+      {step === 3 && (
+        <>
           <Typography variant="h2" sx={{ mb: 0.5 }}>
             QUELLE RÈGLE APPLIQUER ?
           </Typography>
@@ -158,7 +203,7 @@ export const AddFinePage = () => {
           </Typography>
 
           <Stack spacing={1}>
-            {rules.data?.map((r) => (
+            {contextRules.map((r) => (
               <Card
                 key={r.id}
                 sx={{ display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer' }}
@@ -181,10 +226,11 @@ export const AddFinePage = () => {
               </Card>
             ))}
 
-            {rules.data?.length === 0 && (
+            {contextRules.length === 0 && (
               <Card>
                 <Typography variant="body2" color="text.secondary">
-                  Aucune règle active. Crée-en une depuis l&apos;onglet Règles.
+                  Aucune règle dans « {context ? RULE_CONTEXT_LABEL[context] : ''} ». Crée-en une
+                  depuis l&apos;onglet Règles, ou reviens en arrière pour changer de contexte.
                 </Typography>
               </Card>
             )}

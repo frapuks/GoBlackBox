@@ -8,6 +8,7 @@ import type {
   MemberSummary,
   Me,
   Rule,
+  RuleContext,
   RuleKind,
   Settings,
   SignupContext,
@@ -141,8 +142,13 @@ export const useDeleteFine = () =>
 
 export const useCreateRule = () =>
   useDataMutation(
-    (v: { label: string; description?: string; amount: number; kind: RuleKind }) =>
-      post<Rule>('/rules', v),
+    (v: {
+      label: string
+      description?: string
+      amount: number
+      kind: RuleKind
+      context: RuleContext
+    }) => post<Rule>('/rules', v),
   )
 
 /** Applique une règle à tous les membres d'un coup (cotisation). */
@@ -156,6 +162,7 @@ export const useUpdateRule = () =>
       label?: string
       description?: string | null
       amount?: number
+      context?: RuleContext
       archived?: boolean
     }) => {
       const { id, ...body } = v
