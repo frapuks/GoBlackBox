@@ -165,7 +165,7 @@ export const MemberPage = () => {
   return (
     <>
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1 }}>
-        <IconButton component={RouterLink} to="/" aria-label="Retour">
+        <IconButton component={RouterLink} to="/leaderboard" aria-label="Retour">
           <ArrowBackIcon />
         </IconButton>
         <Initials name={data.displayName} size={32} />

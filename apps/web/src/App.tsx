@@ -75,12 +75,15 @@ export const App = () => (
         <Route path="/fines/new" element={<AddFinePage />} />
 
         <Route element={<AppLayout />}>
-          <Route path="/" element={<LeaderboardPage />} />
+          {/* L'accueil, c'est sa propre page : ce qu'on ouvre l'app pour voir. */}
+          <Route path="/" element={<MePage />} />
+          <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/fines" element={<FeedPage />} />
           <Route path="/rules" element={<RulesPage />} />
-          <Route path="/me" element={<MePage />} />
           <Route path="/me/settings" element={<SettingsPage />} />
           <Route path="/members/:id" element={<MemberPage />} />
+          {/* Ancienne adresse : les raccourcis déjà installés continuent de marcher. */}
+          <Route path="/me" element={<Navigate to="/" replace />} />
         </Route>
       </Route>
 

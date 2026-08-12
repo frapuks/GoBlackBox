@@ -40,7 +40,7 @@ export const SettingsPage = () => {
   return (
     <>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-        <IconButton component={RouterLink} to="/me" aria-label="Retour">
+        <IconButton component={RouterLink} to="/" aria-label="Retour">
           <ArrowBackIcon />
         </IconButton>
         <SectionTitle sx={{ mb: 0 }}>Réglages</SectionTitle>

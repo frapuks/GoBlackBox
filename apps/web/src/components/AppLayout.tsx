@@ -8,11 +8,13 @@ import { Box, BottomNavigation, BottomNavigationAction, Container, Fab } from '@
 import { useMe } from '../api/hooks'
 import { pageSpacing, palette } from '../theme'
 
+// Sans libellé, l'icône est seule à porter le sens : le `label` sert
+// d'aria-label pour les lecteurs d'écran.
 const TABS = [
-  { to: '/', label: 'Classement', icon: <BarChartIcon /> },
+  { to: '/', label: 'Moi', icon: <PersonIcon /> },
   { to: '/fines', label: 'Fil', icon: <RssFeedIcon /> },
   { to: '/rules', label: 'Règles', icon: <GavelIcon /> },
-  { to: '/me', label: 'Moi', icon: <PersonIcon /> },
+  { to: '/leaderboard', label: 'Classement', icon: <BarChartIcon /> },
 ]
 
 export const AppLayout = () => {
@@ -21,8 +23,9 @@ export const AppLayout = () => {
   const me = useMe()
 
   const isStaff = me.data?.user.role === 'ADMIN' || me.data?.user.role === 'MANAGER'
-  // Le FAB n'apparaît que sur les deux onglets d'où l'on saisit réellement.
-  const showFab = isStaff && (pathname === '/' || pathname === '/fines')
+  // Uniquement le fil : c'est l'écran de travail du gestionnaire, et le seul
+  // endroit d'où l'on coche les paiements. Les autres onglets se consultent.
+  const showFab = isStaff && pathname === '/fines'
 
   const activeTab = TABS.findIndex((t) => t.to === pathname)
 
@@ -47,7 +50,6 @@ export const AppLayout = () => {
 
       <BottomNavigation
         value={activeTab === -1 ? false : activeTab}
-        showLabels
         sx={{
           position: 'fixed',
           bottom: 0,
@@ -65,7 +67,7 @@ export const AppLayout = () => {
             key={tab.to}
             component={Link}
             to={tab.to}
-            label={tab.label}
+            aria-label={tab.label}
             icon={tab.icon}
           />
         ))}

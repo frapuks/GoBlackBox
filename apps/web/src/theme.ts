@@ -96,15 +96,5 @@ export const theme = createTheme({
         label: { fontFamily: label, fontWeight: 600, letterSpacing: '0.06em' },
       },
     },
-    MuiBottomNavigationAction: {
-      styleOverrides: {
-        label: {
-          fontFamily: label,
-          fontWeight: 600,
-          letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-        },
-      },
-    },
   },
 })
