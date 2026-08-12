@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import AddIcon from '@mui/icons-material/Add'
+import CloseIcon from '@mui/icons-material/Close'
 import BarChartIcon from '@mui/icons-material/BarChart'
 import RssFeedIcon from '@mui/icons-material/RssFeed'
 import GavelIcon from '@mui/icons-material/Gavel'
@@ -10,6 +11,12 @@ import { pageSpacing, palette } from '../theme'
 
 /** Hauteur de la barre du bas, zone sûre comprise. */
 export const NAV_HEIGHT = 'calc(env(safe-area-inset-bottom, 0px) + 57px)'
+
+/**
+ * Hauteur à dégager pour poser un élément fixe au-dessus de la barre : le
+ * bouton central déborde de 28 px, il faut le laisser passer.
+ */
+export const NAV_CLEARANCE = 'calc(env(safe-area-inset-bottom, 0px) + 89px)'
 
 // Sans libellé, l'icône est seule à porter le sens : le `label` sert
 // d'aria-label pour les lecteurs d'écran.
@@ -60,9 +67,9 @@ export const AppLayout = () => {
   const me = useMe()
 
   const isStaff = me.data?.user.role === 'ADMIN' || me.data?.user.role === 'MANAGER'
-  // Inutile de proposer « ajouter » quand on est déjà dans l'écran d'ajout —
-  // et le bouton débordant chevaucherait la barre d'action de l'étape 1.
-  const showAction = isStaff && pathname !== '/fines/new'
+  // Sur l'écran d'ajout, le bouton change d'action mais reste en place : le
+  // retirer redistribuerait les quatre onglets et ferait sauter toutes les icônes.
+  const adding = pathname === '/fines/new'
 
   return (
     <Box sx={{ pb: 10, minHeight: '100dvh' }}>
@@ -89,15 +96,15 @@ export const AppLayout = () => {
           <NavItem key={tab.to} {...tab} active={pathname === tab.to} />
         ))}
 
-        {/* Bouton d'action central, réservé aux gestionnaires. Absent, les
-            quatre onglets se répartissent simplement toute la largeur. */}
-        {showAction && (
+        {/* Bouton d'action central, réservé aux gestionnaires. Absent pour un
+            joueur, les quatre onglets se répartissent toute la largeur. */}
+        {isStaff && (
           <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
             <Fab
               color="primary"
               component={Link}
-              to="/fines/new"
-              aria-label="Ajouter une amende"
+              to={adding ? '/fines' : '/fines/new'}
+              aria-label={adding ? 'Quitter la saisie' : 'Ajouter une amende'}
               sx={{
                 // Débordement au-dessus de la barre + anneau de la couleur de
                 // la barre : le bouton semble découpé dedans plutôt que posé.
@@ -106,7 +113,7 @@ export const AppLayout = () => {
                 boxShadow: '0 6px 18px rgba(249,115,22,0.45)',
               }}
             >
-              <AddIcon />
+              {adding ? <CloseIcon /> : <AddIcon />}
             </Fab>
           </Box>
         )}

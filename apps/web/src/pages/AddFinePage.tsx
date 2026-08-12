@@ -10,7 +10,7 @@ import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
 import { RULE_CONTEXTS, RULE_CONTEXT_LABEL, type RuleContext } from '@blackbox/shared'
 import { useAddFine, useMembers, useRules } from '../api/hooks'
 import { Card, Initials } from '../components/ui'
-import { NAV_HEIGHT } from '../components/AppLayout'
+import { NAV_CLEARANCE } from '../components/AppLayout'
 import { RuleCard } from '../components/RuleCard'
 import { palette } from '../theme'
 
@@ -209,13 +209,13 @@ export const AddFinePage = () => {
           ligne de la grille. */}
       {step === 1 && selected.length > 0 && (
         <>
-          <Box sx={{ height: 88 }} />
+          <Box sx={{ height: 120 }} />
           <Box
             sx={{
               position: 'fixed',
               left: 0,
               right: 0,
-              bottom: NAV_HEIGHT,
+              bottom: NAV_CLEARANCE,
               p: 2,
               bgcolor: palette.surface,
               borderTop: '1px solid rgba(148,163,184,0.15)',
