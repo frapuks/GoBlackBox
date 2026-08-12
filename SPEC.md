@@ -233,7 +233,7 @@ FAB `+` flottant sur Classement et Fil (admin/manager uniquement).
 |---|---|---|
 | `/` | **Classement** | Cagnotte totale en gros. Liste des membres triés par montant dû décroissant : rang, initiales, nom, dû, payé, badge « en retard ». Ligne estompée si tout payé. Tap → fiche membre |
 | `/fines` | **Fil d'activité** | Antéchronologique. `Nom · règle · montant · il y a X`. Checkbox payé à droite (admin/manager). Lignes payées grisées et barrées. Filtres : `Impayées` + par joueur |
-| `/rules` | **Règles** | Deux sections. **La caisse** : sous-section *Retard* — délai (éditable par l'admin) et pénalités, avec leur bouton « Appliquer aux N retardataires » ; sous-section *Cotisations* — bouton « Appliquer aux N membres ». Chaque carte affiche sa date de dernière application. **Règles** : les infractions, `libellé · description · montant`. Création et archivage pour admin/manager, archivées masquées derrière un toggle |
+| `/rules` | **Règles** | Deux sections. Trois sections, chacune avec son bouton « Ajouter » à droite du titre. **Retard de paiement** : le délai en jours (éditable par l'admin) puis les pénalités, avec leur bouton « Appliquer aux N retardataires ». **Cotisation** : bouton « Appliquer aux N membres ». **Règles** : les infractions. Les cartes d'application affichent leur date de dernière application. **Règles** : les infractions, `libellé · description · montant`. Création et archivage pour admin/manager, archivées masquées derrière un toggle |
 | `/me` | **Moi** | Mon solde en gros. Mes amendes, impayées d'abord, avec badge de statut **non cliquable**. Lien discret `Réglages` en bas |
 
 ### Pages secondaires

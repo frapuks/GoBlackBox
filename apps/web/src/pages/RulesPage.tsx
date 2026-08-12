@@ -53,12 +53,12 @@ export const RulesPage = () => {
 
   return (
     <>
-      {/* ------------------------------------------------ La caisse */}
-      <SectionTitle>La caisse</SectionTitle>
-
-      <Typography variant="overline" color="text.secondary">
-        Retard
-      </Typography>
+      {/* ------------------------------------------- Retard de paiement */}
+      <SectionHeader
+        title="Retard de paiement"
+        onAdd={isStaff ? () => setEditing({ create: 'PENALTY' }) : undefined}
+        first
+      />
 
       <LateDelayCard lateAfterDays={settings.data?.lateAfterDays} editable={isAdmin} />
 
@@ -68,47 +68,27 @@ export const RulesPage = () => {
         ))}
       </Stack>
 
-      {isStaff && (
-        <Button
-          startIcon={<AddIcon />}
-          sx={{ mt: 1, mb: 2 }}
-          onClick={() => setEditing({ create: 'PENALTY' })}
-        >
-          Nouvelle pénalité de retard
-        </Button>
-      )}
+      {/* ------------------------------------------------- Cotisation */}
+      <SectionHeader
+        title="Cotisation"
+        onAdd={isStaff ? () => setEditing({ create: 'DUES' }) : undefined}
+      />
 
-      <Typography variant="overline" color="text.secondary">
-        Cotisations
-      </Typography>
+      {dues.length === 0 && <EmptyState>Aucune cotisation</EmptyState>}
 
-      <Stack spacing={1} sx={{ mt: 1 }}>
+      <Stack spacing={1}>
         {dues.map((r) => (
           <ApplyRuleCard key={r.id} rule={r} isStaff={isStaff} onEdit={() => setEditing(r)} />
         ))}
       </Stack>
 
-      {isStaff && (
-        <Button
-          startIcon={<AddIcon />}
-          sx={{ mt: 1 }}
-          onClick={() => setEditing({ create: 'DUES' })}
-        >
-          Nouvelle cotisation
-        </Button>
-      )}
+      {/* ----------------------------------------------------- Règles */}
+      <SectionHeader
+        title="Règles"
+        onAdd={isStaff ? () => setEditing({ create: 'FINE' }) : undefined}
+      />
 
-      {/* ------------------------------------------------ Les règles */}
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 4 }}>
-        <SectionTitle sx={{ mb: 0 }}>Règles</SectionTitle>
-        {isStaff && (
-          <Button startIcon={<AddIcon />} onClick={() => setEditing({ create: 'FINE' })}>
-            Ajouter
-          </Button>
-        )}
-      </Stack>
-
-      <Box sx={{ mt: 1.5 }}>
+      <Box>
         {fines.length === 0 && <EmptyState>Aucune règle</EmptyState>}
 
         <Stack spacing={1}>
@@ -165,6 +145,37 @@ export const RulesPage = () => {
     </>
   )
 }
+
+/**
+ * Titre de section avec son bouton « Ajouter » aligné à droite.
+ *
+ * Le passer par un composant plutôt que d'enchaîner un titre puis un bouton
+ * dans le flux : sans conteneur en ligne, le bouton et le titre suivant se
+ * retrouvent côte à côte au lieu de s'empiler.
+ */
+const SectionHeader = ({
+  title,
+  onAdd,
+  first = false,
+}: {
+  title: string
+  onAdd?: () => void
+  first?: boolean
+}) => (
+  <Stack
+    direction="row"
+    justifyContent="space-between"
+    alignItems="center"
+    sx={{ mt: first ? 0 : 4, mb: 1.5, minHeight: 40 }}
+  >
+    <SectionTitle sx={{ mb: 0 }}>{title}</SectionTitle>
+    {onAdd && (
+      <Button startIcon={<AddIcon />} onClick={onAdd}>
+        Ajouter
+      </Button>
+    )}
+  </Stack>
+)
 
 /**
  * Cotisation ou pénalité : les deux se donnent en un clic à un groupe, pas à un
