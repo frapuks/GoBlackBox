@@ -1,14 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  Box,
-  Button,
-  Container,
-  IconButton,
-  LinearProgress,
-  Stack,
-  Typography,
-} from '@mui/material'
+import { Box, Button, IconButton, LinearProgress, Stack, Typography } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CloseIcon from '@mui/icons-material/Close'
@@ -18,8 +10,9 @@ import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
 import { RULE_CONTEXTS, RULE_CONTEXT_LABEL, type RuleContext } from '@blackbox/shared'
 import { useAddFine, useMembers, useRules } from '../api/hooks'
 import { Card, Initials } from '../components/ui'
+import { NAV_HEIGHT } from '../components/AppLayout'
 import { RuleCard } from '../components/RuleCard'
-import { pageSpacing, palette } from '../theme'
+import { palette } from '../theme'
 
 const CONTEXT_ICON: Record<RuleContext, React.ReactNode> = {
   MATCH: <SportsHandballIcon sx={{ fontSize: 40 }} />,
@@ -63,36 +56,14 @@ export const AddFinePage = () => {
     if (selected.length === 0) return
     addFine.mutate(
       { memberIds: selected, ruleId, tierId },
-      {
-        onSuccess: (fines) => {
-          // Filet de sécurité plutôt qu'une confirmation avant : on valide vite,
-          // et on annule tout le lot si on s'est trompé.
-          navigate('/fines', {
-            state: {
-              undoFineIds: fines.map((f) => f.id),
-              undoLabel:
-                fines.length === 1
-                  ? fines[0]!.label + ' · ' + fines[0]!.memberName
-                  : fines[0]!.label + ' · ' + fines.length + ' joueurs',
-            },
-          })
-        },
-      },
+      // Une erreur de saisie se corrige depuis le fil, où chaque amende porte
+      // son bouton de suppression.
+      { onSuccess: () => navigate('/fines') },
     )
   }
 
   return (
-    <Container
-      maxWidth="sm"
-      disableGutters
-      sx={{
-        minHeight: '100dvh',
-        // Marge basse suffisante pour que la barre d'action ne masque jamais
-        // la dernière ligne de la liste.
-        pb: 'calc(env(safe-area-inset-bottom, 0px) + 96px)',
-        ...pageSpacing,
-      }}
-    >
+    <>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
         <IconButton onClick={back} aria-label={step === 1 ? 'Fermer' : 'Retour'}>
           {step === 1 ? <CloseIcon /> : <ArrowBackIcon />}
@@ -232,29 +203,38 @@ export const AddFinePage = () => {
         </>
       )}
 
-      {/* Barre d'action fixe : le bouton reste atteignable au pouce même avec
-          17 joueurs à faire défiler. */}
+      {/* Barre d'action fixe, posée juste au-dessus de la barre de navigation :
+          le bouton reste atteignable au pouce même avec 17 joueurs à faire
+          défiler. Le réservoir en dessous empêche qu'elle masque la dernière
+          ligne de la grille. */}
       {step === 1 && selected.length > 0 && (
-        <Box
-          sx={{
-            position: 'fixed',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            p: 2,
-            pb: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
-            bgcolor: palette.surface,
-            borderTop: '1px solid rgba(148,163,184,0.15)',
-          }}
-        >
-          <Container maxWidth="sm" disableGutters>
-            <Button fullWidth size="large" variant="contained" onClick={() => setStep(2)}>
+        <>
+          <Box sx={{ height: 88 }} />
+          <Box
+            sx={{
+              position: 'fixed',
+              left: 0,
+              right: 0,
+              bottom: NAV_HEIGHT,
+              p: 2,
+              bgcolor: palette.surface,
+              borderTop: '1px solid rgba(148,163,184,0.15)',
+              zIndex: (t) => t.zIndex.appBar,
+            }}
+          >
+            <Button
+              fullWidth
+              size="large"
+              variant="contained"
+              onClick={() => setStep(2)}
+              sx={{ maxWidth: 600, mx: 'auto', display: 'flex' }}
+            >
               Suivant · {selected.length} joueur{selected.length > 1 ? 's' : ''}
             </Button>
-          </Container>
-        </Box>
+          </Box>
+        </>
       )}
-    </Container>
+    </>
   )
 }
 

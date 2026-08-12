@@ -1,14 +1,11 @@
-import { useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import {
-  Button,
   Checkbox,
   Chip,
   CircularProgress,
   IconButton,
   MenuItem,
   Select,
-  Snackbar,
   Stack,
   Typography,
 } from '@mui/material'
@@ -34,23 +31,6 @@ import { palette } from '../theme'
 export const FeedPage = () => {
   const [unpaid, setUnpaid] = useState(false)
   const [memberId, setMemberId] = useState<number | ''>('')
-
-  // L'écran d'ajout redirige ici en passant l'amende créée : on propose
-  // « Annuler » pendant 10 s plutôt qu'une pop-up de confirmation avant.
-  const location = useLocation()
-  const navigate = useNavigate()
-  const undo = (location.state ?? null) as { undoFineIds: number[]; undoLabel: string } | null
-
-  useEffect(() => {
-    // Purge l'état de navigation, sinon le snackbar revient à chaque retour
-    // arrière du navigateur sur cette page.
-    if (undo) navigate('.', { replace: true, state: null })
-  }, [undo, navigate])
-
-  const [undoInfo, setUndoInfo] = useState(undo)
-  useEffect(() => {
-    if (undo) setUndoInfo(undo)
-  }, [undo])
 
   const me = useMe()
   const members = useMembers()
@@ -157,24 +137,6 @@ export const FeedPage = () => {
         })}
       </Stack>
 
-      <Snackbar
-        open={undoInfo !== null}
-        autoHideDuration={10_000}
-        onClose={() => setUndoInfo(null)}
-        message={undoInfo ? 'Amende ajoutée · ' + undoInfo.undoLabel : ''}
-        action={
-          <Button
-            color="primary"
-            onClick={() => {
-              // Le lot entier est annulé, pas seulement la dernière amende.
-              undoInfo?.undoFineIds.forEach((id) => remove.mutate(id))
-              setUndoInfo(null)
-            }}
-          >
-            Annuler
-          </Button>
-        }
-      />
     </>
   )
 }

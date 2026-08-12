@@ -45,6 +45,18 @@ const RedirectIfAuthenticated = ({ children }: { children: React.ReactNode }) =>
   return <>{children}</>
 }
 
+/**
+ * L'API refuse déjà la création d'amende à un joueur (403). Cette garde évite
+ * simplement de lui laisser remplir trois étapes avant de se heurter au refus.
+ */
+const RequireStaff = () => {
+  const { data: me } = useMe()
+  if (me && me.user.role !== 'ADMIN' && me.user.role !== 'MANAGER') {
+    return <Navigate to="/" replace />
+  }
+  return <Outlet />
+}
+
 export const App = () => (
   <BrowserRouter>
     <Routes>
@@ -72,8 +84,6 @@ export const App = () => (
       </Route>
 
       <Route element={<RequireSession />}>
-        <Route path="/fines/new" element={<AddFinePage />} />
-
         <Route element={<AppLayout />}>
           {/* L'accueil, c'est sa propre page : ce qu'on ouvre l'app pour voir. */}
           <Route path="/" element={<MePage />} />
@@ -82,6 +92,9 @@ export const App = () => (
           <Route path="/rules" element={<RulesPage />} />
           <Route path="/me/settings" element={<SettingsPage />} />
           <Route path="/members/:id" element={<MemberPage />} />
+          <Route element={<RequireStaff />}>
+            <Route path="/fines/new" element={<AddFinePage />} />
+          </Route>
           {/* Ancienne adresse : les raccourcis déjà installés continuent de marcher. */}
           <Route path="/me" element={<Navigate to="/" replace />} />
         </Route>
