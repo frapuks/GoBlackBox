@@ -43,12 +43,32 @@ export const fineRoutes: FastifyPluginAsync = async (app) => {
     const memberIds = [...new Set(body.memberIds)]
 
     const ids = await transaction(async (client) => {
-      // On copie label et amount depuis la règle ici, une fois pour toutes.
+      // On copie label et amount ici, une fois pour toutes.
       const { rows: rules } = await client.query<{ label: string; amount: number }>(
         'SELECT label, amount FROM rules WHERE id = $1 AND archived_at IS NULL',
         [body.ruleId],
       )
       if (!rules.length) throw app.httpErrors.badRequest('Règle inconnue ou archivée')
+
+      // Une règle à paliers n'a pas de montant propre : c'est le palier qui
+      // décide. L'un exclut donc strictement l'autre.
+      const { rows: tiers } = await client.query<{ id: number; label: string; amount: number }>(
+        'SELECT id, label, amount FROM rule_tiers WHERE rule_id = $1',
+        [body.ruleId],
+      )
+
+      let amount = rules[0]!.amount
+      let label = rules[0]!.label
+
+      if (tiers.length) {
+        if (!body.tierId) throw app.httpErrors.badRequest('Cette règle exige un palier')
+        const tier = tiers.find((t) => t.id === body.tierId)
+        if (!tier) throw app.httpErrors.badRequest('Palier inconnu')
+        amount = tier.amount
+        label = `${rules[0]!.label} · ${tier.label}`
+      } else if (body.tierId) {
+        throw app.httpErrors.badRequest('Cette règle n’a pas de palier')
+      }
 
       const { rows: found } = await client.query<{ id: number }>(
         'SELECT id FROM members WHERE id = ANY($1::int[])',
@@ -63,7 +83,7 @@ export const fineRoutes: FastifyPluginAsync = async (app) => {
         `INSERT INTO fines (member_id, rule_id, amount, label, created_by)
          SELECT m, $2, $3, $4, $5 FROM UNNEST($1::int[]) AS m
          RETURNING id`,
-        [memberIds, body.ruleId, rules[0]!.amount, rules[0]!.label, authorMemberId],
+        [memberIds, body.ruleId, amount, label, authorMemberId],
       )
       return rows.map((r) => r.id)
     })

@@ -130,7 +130,9 @@ const useDataMutation = <TVars, TResult>(fn: (vars: TVars) => Promise<TResult>) 
 }
 
 export const useAddFine = () =>
-  useDataMutation((v: { memberIds: number[]; ruleId: number }) => post<Fine[]>('/fines', v))
+  useDataMutation((v: { memberIds: number[]; ruleId: number; tierId?: number }) =>
+    post<Fine[]>('/fines', v),
+  )
 
 export const useSetFinePaid = () =>
   useDataMutation((v: { id: number; paid: boolean }) =>
@@ -148,6 +150,7 @@ export const useCreateRule = () =>
       amount: number
       kind: RuleKind
       context: RuleContext
+      tiers: { label: string; amount: number }[]
     }) => post<Rule>('/rules', v),
   )
 
@@ -163,6 +166,7 @@ export const useUpdateRule = () =>
       description?: string | null
       amount?: number
       context?: RuleContext
+      tiers?: { label: string; amount: number }[]
       archived?: boolean
     }) => {
       const { id, ...body } = v

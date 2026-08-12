@@ -29,8 +29,31 @@ const random = () => {
 const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)]!
 const range = (min: number, max: number) => min + Math.floor(random() * (max - min + 1))
 
+/** Règles à paliers : le montant est porté par le palier, pas par la règle. */
+const TIERED_RULES = [
+  {
+    label: 'Retard',
+    description: "Arrivée après l'heure de convocation",
+    context: 'MATCH',
+    tiers: [
+      ['0 à 5 min', 2],
+      ['5 à 10 min', 5],
+      ['10 à 15 min', 10],
+      ['plus de 15 min', 15],
+    ],
+  },
+  {
+    label: 'Retard',
+    description: "Arrivée après le début de l'échauffement",
+    context: 'TRAINING',
+    tiers: [
+      ['0 à 10 min', 2],
+      ['plus de 10 min', 5],
+    ],
+  },
+] as const
+
 const RULES = [
-  ['Retard vestiaire', "Moins de 15 minutes avant le début de l'échauffement", 5, 'MATCH'],
   ['Carton rouge', "Exclusion directe lors d'un match officiel", 15, 'MATCH'],
   ['Carton jaune', 'Avertissement en match officiel', 3, 'MATCH'],
   ['Tir raté sur but vide', 'Sans commentaire', 5, 'MATCH'],
@@ -70,6 +93,24 @@ const run = async () => {
         RULES.map((r) => r[3]),
       ],
     )
+
+    for (const r of TIERED_RULES) {
+      const { rows } = await client.query<{ id: number }>(
+        `INSERT INTO rules (label, description, amount, context) VALUES ($1, $2, 0, $3)
+         RETURNING id`,
+        [r.label, r.description, r.context],
+      )
+      await client.query(
+        `INSERT INTO rule_tiers (rule_id, label, amount, position)
+         SELECT $1, * FROM UNNEST($2::text[], $3::int[], $4::int[])`,
+        [
+          rows[0]!.id,
+          r.tiers.map((t) => t[0]),
+          r.tiers.map((t) => t[1]),
+          r.tiers.map((_, i) => i),
+        ],
+      )
+    }
 
     const { rows: kept } = await client.query<{ id: number }>(
       'SELECT id FROM members ORDER BY id',
@@ -112,7 +153,8 @@ const run = async () => {
     }
 
     console.log(
-      `[seed] ${memberIds.length} membres · ${ruleRows.length} règles · ${TOTAL_FINES} amendes`,
+      `[seed] ${memberIds.length} membres · ${ruleRows.length + TIERED_RULES.length} règles ` +
+        `(dont ${TIERED_RULES.length} à paliers) · ${TOTAL_FINES} amendes`,
     )
   })
 }

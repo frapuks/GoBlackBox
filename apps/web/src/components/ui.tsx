@@ -76,6 +76,40 @@ export const StatusChip = ({ state }: { state: FineState }) => (
 /** Raccourci pour les endroits qui n'ont pas d'amende, seulement un constat. */
 export const LateBadge = () => <StatusChip state="late" />
 
+/**
+ * Montant d'une règle : un chiffre unique, ou la fourchette de ses paliers.
+ * Les deux ne coexistent jamais — une règle à paliers n'a pas de montant propre.
+ */
+export const RuleAmount = ({
+  amount,
+  tiers,
+  size = 'lg',
+}: {
+  amount: number
+  tiers: { amount: number }[]
+  size?: 'md' | 'lg'
+}) => {
+  if (tiers.length === 0) return <Amount amount={amount} state="due" size={size} />
+
+  const values = tiers.map((t) => t.amount)
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+
+  return (
+    <Typography
+      sx={{
+        fontFamily: '"Bebas Neue", sans-serif',
+        fontSize: size === 'lg' ? '1.6rem' : '1.25rem',
+        lineHeight: 1,
+        color: fineColor('due'),
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {min === max ? `${min} €` : `${min} – ${max} €`}
+    </Typography>
+  )
+}
+
 export const EmptyState = ({ children }: { children: string }) => (
   <Box sx={{ py: 6, textAlign: 'center' }}>
     <Typography variant="overline" color="text.secondary">

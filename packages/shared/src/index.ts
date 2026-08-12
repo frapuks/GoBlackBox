@@ -111,12 +111,21 @@ export const RULE_CONTEXT_LABEL: Record<RuleContext, string> = {
   OTHER: 'Autres',
 }
 
+/**
+ * Un palier d'une règle : « 0 à 5 min », « récidive »… Libellé libre, donc le
+ * mécanisme ne se limite pas aux durées.
+ */
+export const ruleTierInput = z.object({ label: nameSchema, amount: amountSchema })
+export type RuleTier = { id: number; label: string; amount: number }
+
 export const createRuleInput = z.object({
   label: nameSchema,
   description: z.string().trim().max(300).optional(),
+  /** Ignoré quand la règle a des paliers : c'est alors le palier qui décide. */
   amount: amountSchema,
   kind: ruleKindSchema.default('FINE'),
   context: ruleContextSchema.default('OTHER'),
+  tiers: z.array(ruleTierInput).max(10).default([]),
 })
 
 export const updateRuleInput = z.object({
@@ -124,6 +133,8 @@ export const updateRuleInput = z.object({
   description: z.string().trim().max(300).nullable().optional(),
   amount: amountSchema.optional(),
   context: ruleContextSchema.optional(),
+  /** Remplace l'intégralité des paliers. Absent = paliers inchangés. */
+  tiers: z.array(ruleTierInput).max(10).optional(),
   archived: z.boolean().optional(),
 })
 
@@ -134,6 +145,8 @@ export type Rule = {
   amount: number
   kind: RuleKind
   context: RuleContext
+  /** Vide = règle à montant unique. Sinon, c'est le palier qui porte le montant. */
+  tiers: RuleTier[]
   archivedAt: string | null
   /** Dernière fois que cette règle a été appliquée. Sert à ne pas cotiser deux fois. */
   lastAppliedAt: string | null
@@ -151,6 +164,8 @@ export type ApplyRuleResult = { created: number }
 export const createFineInput = z.object({
   memberIds: z.array(z.number().int().positive()).min(1).max(50),
   ruleId: z.number().int().positive(),
+  /** Obligatoire si la règle a des paliers, interdit sinon. */
+  tierId: z.number().int().positive().optional(),
 })
 
 export const setPaidInput = z.object({ paid: z.boolean() })

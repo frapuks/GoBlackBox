@@ -2,6 +2,10 @@
 # Le build context est la RACINE du dépôt : sans ça, packages/shared est invisible.
 FROM node:22-alpine
 
+# pg_dump, pour la sauvegarde automatique avant migration. Le client 16
+# correspond au serveur : pg_dump refuse de dialoguer avec un serveur plus récent.
+RUN apk add --no-cache postgresql16-client
+
 WORKDIR /app
 
 # Les package.json d'abord, seuls : tant qu'aucune dépendance ne change,

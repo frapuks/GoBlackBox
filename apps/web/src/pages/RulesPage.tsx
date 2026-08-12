@@ -15,6 +15,7 @@ import {
   Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import GroupsIcon from '@mui/icons-material/Groups'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
@@ -37,6 +38,7 @@ import {
   useUpdateSettings,
 } from '../api/hooks'
 import { Amount, Card, EmptyState, SectionTitle, formatDate } from '../components/ui'
+import { RuleCard } from '../components/RuleCard'
 import { ToggleButton, ToggleButtonGroup } from '@mui/material'
 import { palette } from '../theme'
 
@@ -106,45 +108,19 @@ export const RulesPage = () => {
           <Stack spacing={1} sx={{ mt: 0.5 }}>
             {fines
               .filter((r) => r.context === context)
-              .map((r) => {
-                const archived = r.archivedAt !== null
-                return (
-                  <Card
-                    key={r.id}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 2,
-                      opacity: archived ? 0.45 : 1,
-                    }}
-                  >
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography
-                          sx={{ fontFamily: '"Archivo Narrow", sans-serif', fontWeight: 600 }}
-                          textTransform="uppercase"
-                        >
-                          {r.label}
-                        </Typography>
-                        {archived && <Chip size="small" label="Archivée" sx={{ height: 20 }} />}
-                      </Stack>
-                      {r.description && (
-                        <Typography variant="body2" color="text.secondary">
-                          {r.description}
-                        </Typography>
-                      )}
-                    </Box>
-
-                    <Amount amount={r.amount} state="due" size="lg" />
-
-                    {isStaff && (
+              .map((r) => (
+                <RuleCard
+                  key={r.id}
+                  rule={r}
+                  action={
+                    isStaff ? (
                       <IconButton size="small" aria-label="Modifier" onClick={() => setEditing(r)}>
                         <EditOutlinedIcon fontSize="small" />
                       </IconButton>
-                    )}
-                  </Card>
-                )
-              })}
+                    ) : undefined
+                  }
+                />
+              ))}
           </Stack>
         </Box>
       ))}
@@ -376,6 +352,11 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('5')
   const [context, setContext] = useState<RuleContext>('OTHER')
+  const [tiers, setTiers] = useState<{ label: string; amount: string }[]>([])
+  // Le mode est choisi AVANT de saisir : sans lui, on remplit un montant que
+  // l'ajout d'un palier vient effacer, ce qui donne l'impression d'avoir
+  // travaillé pour rien.
+  const [mode, setMode] = useState<'SIMPLE' | 'TIERS'>('SIMPLE')
   const [archived, setArchived] = useState(false)
 
   // Recharge le formulaire à chaque ouverture, sinon on repart des valeurs
@@ -386,10 +367,25 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
     setDescription(rule?.description ?? '')
     setAmount(String(rule?.amount ?? (isDues ? 20 : 5)))
     setContext(rule?.context ?? 'OTHER')
+    setTiers((rule?.tiers ?? []).map((t) => ({ label: t.label, amount: String(t.amount) })))
+    setMode(rule?.tiers.length ? 'TIERS' : 'SIMPLE')
     setArchived(rule?.archivedAt != null)
   }, [target, rule, isDues])
 
   const pending = createRule.isPending || updateRule.isPending
+
+  // Un palier sans libellé est ignoré : c'est une ligne que l'utilisateur a
+  // ajoutée puis laissée vide, pas une intention.
+  const cleanTiers =
+    mode === 'TIERS'
+      ? tiers
+          .filter((t) => t.label.trim())
+          .map((t) => ({ label: t.label.trim(), amount: Number(t.amount) || 0 }))
+      : []
+
+  // Les deux états cohabitent en mémoire : basculer d'un mode à l'autre puis
+  // revenir ne perd rien. C'est la soumission qui tranche.
+  const incomplete = mode === 'TIERS' && cleanTiers.length === 0
 
   const submit = () => {
     if (rule) {
@@ -401,15 +397,23 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
           id: rule.id,
           label,
           description: description || null,
-          amount: Number(amount),
+          amount: cleanTiers.length ? 0 : Number(amount),
           context,
+          tiers: cleanTiers,
           archived,
         },
         { onSuccess: onClose },
       )
     } else {
       createRule.mutate(
-        { label, description: description || undefined, amount: Number(amount), kind, context },
+        {
+          label,
+          description: description || undefined,
+          amount: cleanTiers.length ? 0 : Number(amount),
+          kind,
+          context,
+          tiers: cleanTiers,
+        },
         { onSuccess: onClose },
       )
     }
@@ -442,26 +446,104 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
             required
           />
           <TextField
-            label="Description (optionnel)"
+            label="Description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             multiline
             minRows={2}
           />
-          <TextField
-            label="Montant en euros"
-            type="number"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            inputProps={{ min: 0, max: 10000 }}
-            helperText={
-              isDues
-                ? 'Montant dû par chaque membre à chaque application'
-                : isPenalty
-                  ? 'Montant ajouté à chaque joueur ayant une amende en retard'
-                  : '0 € possible : décris alors la sanction dans la description'
-            }
-          />
+          {kind === 'FINE' && (
+            <Stack spacing={0.5}>
+              <Typography variant="overline" color="text.secondary">
+                Tarification
+              </Typography>
+              <ToggleButtonGroup
+                exclusive
+                fullWidth
+                size="small"
+                value={mode}
+                onChange={(_, v: 'SIMPLE' | 'TIERS' | null) => {
+                  if (!v) return
+                  setMode(v)
+                  // Une ligne prête à remplir : sans elle, le mode « Paliers »
+                  // s'ouvre sur un écran vide qui n'invite à rien.
+                  if (v === 'TIERS' && tiers.length === 0) setTiers([{ label: '', amount: '5' }])
+                }}
+              >
+                <ToggleButton value="SIMPLE">Montant unique</ToggleButton>
+                <ToggleButton value="TIERS">Paliers</ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
+          )}
+
+          {/* Une règle à paliers n'a pas de montant propre : c'est le palier
+              qui décide. Les deux formulaires sont donc exclusifs. */}
+          {mode === 'SIMPLE' && (
+            <TextField
+              label="Montant en euros"
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              inputProps={{ min: 0, max: 10000 }}
+              helperText={
+                isDues
+                  ? 'Montant dû par chaque membre à chaque application'
+                  : isPenalty
+                    ? 'Montant ajouté à chaque joueur ayant une amende en retard'
+                    : undefined
+              }
+            />
+          )}
+
+          {mode === 'TIERS' && kind === 'FINE' && (
+            <Stack spacing={1}>
+              {tiers.map((t, i) => (
+                <Stack key={i} direction="row" spacing={1} alignItems="center">
+                  <TextField
+                    size="small"
+                    label="Libellé"
+                    placeholder="0 à 5 min"
+                    value={t.label}
+                    onChange={(e) =>
+                      setTiers((prev) =>
+                        prev.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)),
+                      )
+                    }
+                    sx={{ flex: 1 }}
+                  />
+                  <TextField
+                    size="small"
+                    label="€"
+                    type="number"
+                    value={t.amount}
+                    onChange={(e) =>
+                      setTiers((prev) =>
+                        prev.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)),
+                      )
+                    }
+                    inputProps={{ min: 0, max: 10000 }}
+                    sx={{ width: 90 }}
+                  />
+                  <IconButton
+                    size="small"
+                    aria-label="Supprimer le palier"
+                    onClick={() => setTiers((prev) => prev.filter((_, j) => j !== i))}
+                  >
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+              ))}
+
+              <Button
+                size="small"
+                startIcon={<AddIcon />}
+                onClick={() => setTiers((prev) => [...prev, { label: '', amount: '5' }])}
+                sx={{ alignSelf: 'flex-start' }}
+              >
+                Ajouter un palier
+              </Button>
+            </Stack>
+          )}
 
           {kind === 'FINE' && (
             <Stack spacing={0.5}>
@@ -481,9 +563,6 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
                   </ToggleButton>
                 ))}
               </ToggleButtonGroup>
-              <Typography variant="caption" color="text.secondary">
-                Détermine à quel moment la règle est proposée à la saisie.
-              </Typography>
             </Stack>
           )}
 
@@ -509,7 +588,7 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
 
       <DialogActions>
         <Button onClick={onClose}>Annuler</Button>
-        <Button variant="contained" onClick={submit} disabled={!label || pending}>
+        <Button variant="contained" onClick={submit} disabled={!label || incomplete || pending}>
           {rule ? 'Enregistrer' : 'Créer'}
         </Button>
       </DialogActions>

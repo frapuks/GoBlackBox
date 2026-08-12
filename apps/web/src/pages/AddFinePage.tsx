@@ -1,6 +1,14 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Box, Button, Container, IconButton, LinearProgress, Stack, Typography } from '@mui/material'
+import {
+  Box,
+  Button,
+  Container,
+  IconButton,
+  LinearProgress,
+  Stack,
+  Typography,
+} from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CloseIcon from '@mui/icons-material/Close'
@@ -9,7 +17,8 @@ import FitnessCenterIcon from '@mui/icons-material/FitnessCenter'
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
 import { RULE_CONTEXTS, RULE_CONTEXT_LABEL, type RuleContext } from '@blackbox/shared'
 import { useAddFine, useMembers, useRules } from '../api/hooks'
-import { Amount, Card, Initials } from '../components/ui'
+import { Card, Initials } from '../components/ui'
+import { RuleCard } from '../components/RuleCard'
 import { pageSpacing, palette } from '../theme'
 
 const CONTEXT_ICON: Record<RuleContext, React.ReactNode> = {
@@ -50,10 +59,10 @@ export const AddFinePage = () => {
     else setStep((s) => (s === 3 ? 2 : 1))
   }
 
-  const submit = (ruleId: number) => {
+  const submit = (ruleId: number, tierId?: number) => {
     if (selected.length === 0) return
     addFine.mutate(
-      { memberIds: selected, ruleId },
+      { memberIds: selected, ruleId, tierId },
       {
         onSuccess: (fines) => {
           // Filet de sécurité plutôt qu'une confirmation avant : on valide vite,
@@ -204,26 +213,7 @@ export const AddFinePage = () => {
 
           <Stack spacing={1}>
             {contextRules.map((r) => (
-              <Card
-                key={r.id}
-                sx={{ display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer' }}
-                onClick={() => submit(r.id)}
-              >
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography
-                    sx={{ fontFamily: '"Archivo Narrow", sans-serif', fontWeight: 600 }}
-                    textTransform="uppercase"
-                  >
-                    {r.label}
-                  </Typography>
-                  {r.description && (
-                    <Typography variant="body2" color="text.secondary">
-                      {r.description}
-                    </Typography>
-                  )}
-                </Box>
-                <Amount amount={r.amount} state="due" size="lg" />
-              </Card>
+              <RuleCard key={r.id} rule={r} onSelect={submit} />
             ))}
 
             {contextRules.length === 0 && (

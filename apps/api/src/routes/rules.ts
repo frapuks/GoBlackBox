@@ -6,6 +6,7 @@ import {
   type Rule,
   type RuleContext,
   type RuleKind,
+  type RuleTier,
 } from '@blackbox/shared'
 import { query, queryOne, transaction } from '../db.js'
 import { IS_LATE_SQL } from '../queries.js'
@@ -17,6 +18,7 @@ type RuleRow = {
   amount: number
   kind: RuleKind
   context: RuleContext
+  tiers: RuleTier[]
   archived_at: Date | null
   last_applied_at: Date | null
 }
@@ -28,12 +30,39 @@ const toRule = (r: RuleRow): Rule => ({
   amount: r.amount,
   kind: r.kind,
   context: r.context,
+  tiers: r.tiers,
   archivedAt: r.archived_at ? r.archived_at.toISOString() : null,
   lastAppliedAt: r.last_applied_at ? r.last_applied_at.toISOString() : null,
 })
 
+// Les paliers sont agrégés en JSON : une seule requête, et `pg` les rend
+// directement sous forme de tableau d'objets.
+const TIERS_SQL = `
+  COALESCE(
+    (SELECT json_agg(json_build_object('id', t.id, 'label', t.label, 'amount', t.amount)
+                     ORDER BY t.position, t.id)
+       FROM rule_tiers t WHERE t.rule_id = r.id),
+    '[]'::json
+  )`
+
+/** Remplace tous les paliers d'une règle. La position vient de l'ordre reçu. */
+const replaceTiers = async (
+  client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  ruleId: number,
+  tiers: { label: string; amount: number }[],
+) => {
+  await client.query('DELETE FROM rule_tiers WHERE rule_id = $1', [ruleId])
+  if (!tiers.length) return
+  await client.query(
+    `INSERT INTO rule_tiers (rule_id, label, amount, position)
+     SELECT $1, * FROM UNNEST($2::text[], $3::int[], $4::int[])`,
+    [ruleId, tiers.map((t) => t.label), tiers.map((t) => t.amount), tiers.map((_, i) => i)],
+  )
+}
+
 const SELECT = `
   SELECT r.id, r.label, r.description, r.amount, r.kind, r.context, r.archived_at,
+         ${TIERS_SQL} AS tiers,
          (SELECT MAX(f.created_at) FROM fines f WHERE f.rule_id = r.id) AS last_applied_at
     FROM rules r`
 
@@ -55,15 +84,23 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/rules', staff, async (req, reply): Promise<Rule> => {
     const body = createRuleInput.parse(req.body)
-    const row = await queryOne<RuleRow>(
-      `INSERT INTO rules (label, description, amount, kind, context)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, label, description, amount, kind, context, archived_at,
-                 NULL::timestamptz AS last_applied_at`,
-      [body.label, body.description ?? null, body.amount, body.kind, body.context],
-    )
+    if (body.kind !== 'FINE' && body.tiers.length) {
+      throw app.httpErrors.badRequest('Seule une règle d’infraction peut avoir des paliers')
+    }
+
+    const id = await transaction(async (client) => {
+      const { rows } = await client.query<{ id: number }>(
+        `INSERT INTO rules (label, description, amount, kind, context)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
+        [body.label, body.description ?? null, body.amount, body.kind, body.context],
+      )
+      await replaceTiers(client, rows[0]!.id, body.tiers)
+      return rows[0]!.id
+    })
+
     reply.code(201)
-    return toRule(row!)
+    return loadRule(id)
   })
 
   app.patch('/rules/:id', staff, async (req): Promise<Rule> => {
@@ -101,8 +138,24 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       ],
     )
     if (!row) throw app.httpErrors.notFound('Règle introuvable')
+
+    // `tiers` absent = paliers inchangés. Fourni = il remplace toute la liste.
+    if (body.tiers) {
+      if (row.kind !== 'FINE' && body.tiers.length) {
+        throw app.httpErrors.badRequest('Seule une règle d’infraction peut avoir des paliers')
+      }
+      await transaction((client) => replaceTiers(client, id, body.tiers!))
+      return loadRule(id)
+    }
+
     return toRule(row)
   })
+
+  const loadRule = async (id: number): Promise<Rule> => {
+    const row = await queryOne<RuleRow>(`${SELECT} WHERE r.id = $1`, [id])
+    if (!row) throw app.httpErrors.notFound('Règle introuvable')
+    return toRule(row)
+  }
 
   /**
    * Applique une règle en un clic, en une transaction.

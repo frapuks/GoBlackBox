@@ -115,6 +115,12 @@ settings  id = 1 (CHECK), invite_code,
 - **Une cotisation ou une pénalité est une règle**, pas une seconde table :
   elle produit la même chose au final, une ligne dans `fines` avec son montant
   et son paiement à cocher. Seule sa *nature* diffère, d'où la colonne `kind`.
+- **Les paliers portent le montant à la place de la règle.** Une règle a soit
+  un montant unique, soit des paliers — jamais les deux. L'amende exige alors
+  un `tierId`, et son libellé devient `Retard · 5 à 10 min`.
+- **Les amendes ne référencent pas le palier**, elles en copient le montant et
+  le libellé. Réorganiser ou supprimer des paliers ne réécrit donc jamais
+  l'historique et ne laisse aucune amende orpheline.
 - **Le contexte est porté par la règle, pas par l'amende.** Une règle
   appartient à exactement un contexte ; l'amende créée n'en garde pas trace, au
   même titre qu'elle ne garde pas la description. Changer le contexte d'une
@@ -205,7 +211,9 @@ POST   /rules/:id/apply       admin/manager — DUES : tous les membres
                                               FINE : refusé (400)
 
 GET    /fines                 ?unpaid=1&memberId=
-POST   /fines                 admin/manager — { memberIds[], ruleId }, un lot en une transaction
+POST   /fines                 admin/manager — { memberIds[], ruleId, tierId? }
+                              un lot en une transaction. tierId obligatoire si
+                              la règle a des paliers, refusé sinon
 DELETE /fines/:id             admin/manager
 PATCH  /fines/:id/paid        admin/manager
 
@@ -238,14 +246,14 @@ FAB `+` flottant sur Classement et Fil (admin/manager uniquement).
 |---|---|---|
 | `/` | **Classement** | Cagnotte totale en gros. Liste des membres triés par montant dû décroissant : rang, initiales, nom, dû, payé, badge « en retard ». Ligne estompée si tout payé. Tap → fiche membre |
 | `/fines` | **Fil d'activité** | Antéchronologique. `Nom · règle · montant · il y a X`. Checkbox payé à droite (admin/manager). Lignes payées grisées et barrées. Filtres : `Impayées` + par joueur |
-| `/rules` | **Règles** | Deux sections. Trois sections, chacune avec son bouton « Ajouter » à droite du titre. **Retard de paiement** : le délai en jours (éditable par l'admin) puis les pénalités, avec leur bouton « Appliquer aux N retardataires ». **Cotisation** : bouton « Appliquer aux N membres ». **Règles** : les infractions, regroupées par contexte (Match / Entraînement / Autres). Les cartes d'application affichent leur date de dernière application. **Règles** : les infractions, `libellé · description · montant`. Création et archivage pour admin/manager, archivées masquées derrière un toggle |
+| `/rules` | **Règles** | Deux sections. Trois sections, chacune avec son bouton « Ajouter » à droite du titre. **Retard de paiement** : le délai en jours (éditable par l'admin) puis les pénalités, avec leur bouton « Appliquer aux N retardataires ». **Cotisation** : bouton « Appliquer aux N membres ». **Règles** : les infractions, regroupées par contexte (Match / Entraînement / Autres). Le formulaire permet d'ajouter des paliers ; le champ « montant » disparaît dès qu'il y en a un. Les cartes d'application affichent leur date de dernière application. **Règles** : les infractions, `libellé · description · montant`. Création et archivage pour admin/manager, archivées masquées derrière un toggle |
 | `/me` | **Moi** | Mon solde en gros. Mes amendes, impayées d'abord, avec badge de statut **non cliquable**. Lien discret `Réglages` en bas |
 
 ### Pages secondaires
 
 | Route | Page |
 |---|---|
-| `/fines/new` | **Ajouter une amende** — plein écran, 3 étapes. Étape 1 : grille de cartes joueurs, **sélection multiple** + « tout sélectionner », barre d'action fixe en bas. Étape 2 : le **contexte** (Match / Entraînement / Autres), qui détermine les règles proposées. Étape 3 : les règles du contexte choisi, appliquées à tout le lot. Validation → retour au fil + snackbar « annuler » 10 s qui annule le lot entier. **Zéro clavier.** |
+| `/fines/new` | **Ajouter une amende** — plein écran, 3 étapes. Étape 1 : grille de cartes joueurs, **sélection multiple** + « tout sélectionner », barre d'action fixe en bas. Étape 2 : le **contexte** (Match / Entraînement / Autres), qui détermine les règles proposées. Étape 3 : les règles du contexte choisi, appliquées à tout le lot. Une règle à paliers s'affiche comme **une carte unique** portant la fourchette (« Retard 2 – 15 € ») et se déplie sur ses paliers. Validation → retour au fil + snackbar « annuler » 10 s qui annule le lot entier. **Zéro clavier.** |
 | `/members/:id` | Fiche membre — lecture seule. Même composant que `/me` |
 | `/me/settings` | Réglages — nom, mot de passe, déconnexion. Si ADMIN, la même page contient en plus : code d'invitation (+ régénération), création de participants, gestion des rôles |
 
