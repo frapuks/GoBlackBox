@@ -15,6 +15,7 @@ import {
   useUpdateSettings,
 } from '../api/hooks'
 import { Card, Initials, SectionTitle } from '../components/ui'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { palette } from '../theme'
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
@@ -142,6 +143,7 @@ const PasswordSection = () => {
 const InviteCodeSection = () => {
   const settings = useSettings()
   const updateSettings = useUpdateSettings()
+  const [confirming, setConfirming] = useState(false)
 
   return (
     <Section title="Code d'invitation">
@@ -157,21 +159,34 @@ const InviteCodeSection = () => {
         >
           {settings.data?.inviteCode}
         </Typography>
-        <IconButton
-          aria-label="Régénérer"
-          onClick={() => {
-            const ok = confirm(
-              'Régénérer le code ? L’ancien ne fonctionnera plus pour les nouvelles inscriptions.',
-            )
-            if (ok) updateSettings.mutate({ regenerateInviteCode: true })
-          }}
-        >
+        <IconButton aria-label="Régénérer" onClick={() => setConfirming(true)}>
           <RefreshIcon />
         </IconButton>
       </Stack>
       <Typography variant="caption" color="text.secondary">
         À communiquer aux joueurs pour qu&apos;ils puissent créer leur compte.
       </Typography>
+
+      <ConfirmDialog
+        open={confirming}
+        title="Régénérer le code ?"
+        confirmLabel="Régénérer"
+        danger
+        pending={updateSettings.isPending}
+        onClose={() => setConfirming(false)}
+        onConfirm={() =>
+          updateSettings.mutate(
+            { regenerateInviteCode: true },
+            { onSuccess: () => setConfirming(false) },
+          )
+        }
+      >
+        <Typography variant="body2" color="text.secondary">
+          L&apos;ancien code cessera immédiatement de fonctionner : les joueurs à qui tu
+          l&apos;as déjà communiqué ne pourront plus créer leur compte. Les comptes
+          existants ne sont pas affectés.
+        </Typography>
+      </ConfirmDialog>
     </Section>
   )
 }

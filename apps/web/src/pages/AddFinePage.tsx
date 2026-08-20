@@ -10,7 +10,7 @@ import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
 import { RULE_CONTEXTS, RULE_CONTEXT_LABEL, type RuleContext } from '@blackbox/shared'
 import { useAddFine, useMembers, useRules } from '../api/hooks'
 import { Card, Initials } from '../components/ui'
-import { NAV_CLEARANCE } from '../components/AppLayout'
+import { FAB_OVERFLOW } from '../components/AppLayout'
 import { RuleCard } from '../components/RuleCard'
 import { palette } from '../theme'
 
@@ -203,36 +203,21 @@ export const AddFinePage = () => {
         </>
       )}
 
-      {/* Barre d'action fixe, posée juste au-dessus de la barre de navigation :
-          le bouton reste atteignable au pouce même avec 17 joueurs à faire
-          défiler. Le réservoir en dessous empêche qu'elle masque la dernière
-          ligne de la grille. */}
+      {/* Bouton collant plutôt que fixe : le contenu défile désormais dans son
+          propre conteneur, pas dans le document. Le décalage le fait passer
+          au-dessus du bouton central, qui déborde de la barre. */}
       {step === 1 && selected.length > 0 && (
-        <>
-          <Box sx={{ height: 120 }} />
-          <Box
-            sx={{
-              position: 'fixed',
-              left: 0,
-              right: 0,
-              bottom: NAV_CLEARANCE,
-              p: 2,
-              bgcolor: palette.surface,
-              borderTop: '1px solid rgba(148,163,184,0.15)',
-              zIndex: (t) => t.zIndex.appBar,
-            }}
+        <Box sx={{ position: 'sticky', bottom: FAB_OVERFLOW + 8, mt: 2, zIndex: 1 }}>
+          <Button
+            fullWidth
+            size="large"
+            variant="contained"
+            onClick={() => setStep(2)}
+            sx={{ boxShadow: '0 6px 18px rgba(0,0,0,0.5)' }}
           >
-            <Button
-              fullWidth
-              size="large"
-              variant="contained"
-              onClick={() => setStep(2)}
-              sx={{ maxWidth: 600, mx: 'auto', display: 'flex' }}
-            >
-              Suivant · {selected.length} joueur{selected.length > 1 ? 's' : ''}
-            </Button>
-          </Box>
-        </>
+            Suivant · {selected.length} joueur{selected.length > 1 ? 's' : ''}
+          </Button>
+        </Box>
       )}
     </>
   )

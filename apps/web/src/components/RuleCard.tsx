@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Box, Chip, Collapse, Stack, Typography } from '@mui/material'
+import { Box, Chip, Collapse, IconButton, Stack, Typography } from '@mui/material'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import type { Rule } from '@blackbox/shared'
 import { Amount, Card, RuleAmount } from './ui'
@@ -9,9 +9,13 @@ import { palette } from '../theme'
  * Carte d'une règle, partagée entre la page Règles et l'étape 3 de l'ajout
  * d'amende. Un seul composant, donc les deux écrans ne peuvent pas diverger.
  *
- * Avec `onSelect`, la carte est actionnable : une règle à montant unique se
- * donne au tap, une règle à paliers se déplie et c'est le palier qu'on tape.
- * Sans `onSelect`, elle est en lecture seule et ne fait que se déplier.
+ * La liste ne montre que l'essentiel — libellé et montant. Description et
+ * paliers sont repliés derrière le chevron.
+ *
+ * Deux gestes distincts, pour ne pas sacrifier la saisie en un tap :
+ *  - le chevron ouvre les détails, toujours ;
+ *  - la ligne déclenche `onSelect` quand il n'y a pas de palier à choisir,
+ *    et se contente de déplier sinon.
  */
 export const RuleCard = ({
   rule,
@@ -23,27 +27,26 @@ export const RuleCard = ({
   action?: React.ReactNode
 }) => {
   const hasTiers = rule.tiers.length > 0
+  const expandable = hasTiers || Boolean(rule.description)
   const [open, setOpen] = useState(false)
   const archived = rule.archivedAt !== null
 
+  const toggle = () => setOpen((v) => !v)
+
   // Une règle à paliers ne se donne jamais directement : c'est le palier qui
-  // porte le montant, donc le tap sur l'en-tête ne peut que déplier.
-  const headerAction = hasTiers
-    ? () => setOpen((v) => !v)
-    : onSelect
-      ? () => onSelect(rule.id)
-      : undefined
+  // porte le montant, donc la ligne ne peut que déplier.
+  const rowAction = hasTiers ? toggle : onSelect ? () => onSelect(rule.id) : expandable ? toggle : undefined
 
   return (
     <Card sx={{ p: 0, overflow: 'hidden', opacity: archived ? 0.45 : 1 }}>
       <Box
-        onClick={headerAction}
+        onClick={rowAction}
         sx={{
           display: 'flex',
           alignItems: 'center',
-          gap: 2,
+          gap: 1,
           p: 2,
-          cursor: headerAction ? 'pointer' : 'default',
+          cursor: rowAction ? 'pointer' : 'default',
         }}
       >
         <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -56,30 +59,42 @@ export const RuleCard = ({
             </Typography>
             {archived && <Chip size="small" label="Archivée" sx={{ height: 20 }} />}
           </Stack>
-          {rule.description && (
-            <Typography variant="body2" color="text.secondary">
-              {rule.description}
-            </Typography>
-          )}
         </Box>
 
         <RuleAmount amount={rule.amount} tiers={rule.tiers} />
 
-        {hasTiers && (
-          <ExpandMoreIcon
+        {expandable && (
+          <IconButton
+            size="small"
+            aria-label={open ? 'Masquer les détails' : 'Voir les détails'}
+            aria-expanded={open}
+            // La ligne a sa propre action : sans ça, ouvrir les détails
+            // déclencherait aussi la saisie de l'amende.
+            onClick={(e) => {
+              e.stopPropagation()
+              toggle()
+            }}
             sx={{
               color: palette.textMuted,
               transition: 'transform .2s',
               transform: open ? 'rotate(180deg)' : 'none',
             }}
-          />
+          >
+            <ExpandMoreIcon fontSize="small" />
+          </IconButton>
         )}
 
-        {action}
+        {action && <Box onClick={(e) => e.stopPropagation()}>{action}</Box>}
       </Box>
 
       <Collapse in={open} unmountOnExit>
-        <Stack sx={{ borderTop: '1px solid rgba(148,163,184,0.15)' }}>
+        <Box sx={{ borderTop: '1px solid rgba(148,163,184,0.15)' }}>
+          {rule.description && (
+            <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 1.5 }}>
+              {rule.description}
+            </Typography>
+          )}
+
           {rule.tiers.map((t) => (
             <Box
               key={t.id}
@@ -91,14 +106,14 @@ export const RuleCard = ({
                 px: 2,
                 py: 1.75,
                 cursor: onSelect ? 'pointer' : 'default',
-                borderBottom: '1px solid rgba(148,163,184,0.08)',
+                borderTop: '1px solid rgba(148,163,184,0.08)',
               }}
             >
               <Typography sx={{ flex: 1 }}>{t.label}</Typography>
               <Amount amount={t.amount} state="due" />
             </Box>
           ))}
-        </Stack>
+        </Box>
       </Collapse>
     </Card>
   )

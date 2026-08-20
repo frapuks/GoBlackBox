@@ -9,14 +9,8 @@ import { Box, Container, Fab } from '@mui/material'
 import { useMe } from '../api/hooks'
 import { pageSpacing, palette } from '../theme'
 
-/** Hauteur de la barre du bas, zone sûre comprise. */
-export const NAV_HEIGHT = 'calc(env(safe-area-inset-bottom, 0px) + 57px)'
-
-/**
- * Hauteur à dégager pour poser un élément fixe au-dessus de la barre : le
- * bouton central déborde de 28 px, il faut le laisser passer.
- */
-export const NAV_CLEARANCE = 'calc(env(safe-area-inset-bottom, 0px) + 89px)'
+/** Débordement du bouton central au-dessus de la barre, en pixels. */
+export const FAB_OVERFLOW = 28
 
 // Sans libellé, l'icône est seule à porter le sens : le `label` sert
 // d'aria-label pour les lecteurs d'écran.
@@ -72,24 +66,33 @@ export const AppLayout = () => {
   const adding = pathname === '/fines/new'
 
   return (
-    <Box sx={{ pb: 10, minHeight: '100dvh' }}>
-      <Container maxWidth="sm" disableGutters sx={pageSpacing}>
-        <Outlet />
-      </Container>
+    // Colonne haute d'un écran : la barre est la dernière ligne du flux, pas un
+    // élément positionné. Au lancement d'une PWA iOS, WebKit calcule la hauteur
+    // du layout viewport avant d'y intégrer la zone du home indicator : un
+    // `position: fixed; bottom: 0` s'accroche alors à un bas d'écran provisoire
+    // et paraît surélevé jusqu'au premier défilement.
+    <Box sx={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <Box component="main" sx={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain' }}>
+        {/* La marge basse dégage le débordement du bouton central, sinon les
+            dernières lignes passent dessous en fin de défilement. */}
+        <Container
+          maxWidth="sm"
+          disableGutters
+          sx={{ ...pageSpacing, pb: `${FAB_OVERFLOW + 24}px` }}
+        >
+          <Outlet />
+        </Container>
+      </Box>
 
       <Box
         component="nav"
         sx={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
+          flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           bgcolor: palette.surface,
           borderTop: '1px solid rgba(148,163,184,0.15)',
-          pb: 'env(safe-area-inset-bottom)',
-          zIndex: (t) => t.zIndex.appBar,
+          pb: 'env(safe-area-inset-bottom, 0px)',
         }}
       >
         {TABS.slice(0, 2).map((tab) => (
@@ -108,7 +111,7 @@ export const AppLayout = () => {
               sx={{
                 // Débordement au-dessus de la barre + anneau de la couleur de
                 // la barre : le bouton semble découpé dedans plutôt que posé.
-                mt: -3.5,
+                mt: `-${FAB_OVERFLOW}px`,
                 border: `4px solid ${palette.surface}`,
                 boxShadow: '0 6px 18px rgba(249,115,22,0.45)',
               }}

@@ -11,6 +11,7 @@ import {
 } from '@mui/material'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import FilterListIcon from '@mui/icons-material/FilterList'
+import type { Fine } from '@blackbox/shared'
 import { useDeleteFine, useFines, useMe, useMembers, useSetFinePaid } from '../api/hooks'
 import {
   Amount,
@@ -21,6 +22,7 @@ import {
   fineState,
   formatAgo,
 } from '../components/ui'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { palette } from '../theme'
 
 /**
@@ -31,6 +33,8 @@ import { palette } from '../theme'
 export const FeedPage = () => {
   const [unpaid, setUnpaid] = useState(false)
   const [memberId, setMemberId] = useState<number | ''>('')
+  /** Amende dont la suppression attend confirmation. */
+  const [deleting, setDeleting] = useState<Fine | null>(null)
 
   const me = useMe()
   const members = useMembers()
@@ -123,10 +127,7 @@ export const FeedPage = () => {
                   <IconButton
                     size="small"
                     aria-label="Supprimer"
-                    onClick={() => {
-                      const ok = confirm('Supprimer cette amende de ' + f.memberName + ' ?')
-                      if (ok) remove.mutate(f.id)
-                    }}
+                    onClick={() => setDeleting(f)}
                   >
                     <DeleteOutlineIcon fontSize="small" sx={{ color: palette.textMuted }} />
                   </IconButton>
@@ -137,6 +138,29 @@ export const FeedPage = () => {
         })}
       </Stack>
 
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Supprimer cette amende ?"
+        confirmLabel="Supprimer"
+        danger
+        pending={remove.isPending}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => {
+          if (deleting) remove.mutate(deleting.id, { onSuccess: () => setDeleting(null) })
+        }}
+      >
+        {deleting && (
+          <Stack spacing={0.5}>
+            <Typography sx={{ fontWeight: 600 }}>{deleting.memberName}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {deleting.label} · {deleting.amount} € · {formatAgo(deleting.createdAt)}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ pt: 1 }}>
+              Elle disparaîtra du fil et des totaux. Cette action est définitive.
+            </Typography>
+          </Stack>
+        )}
+      </ConfirmDialog>
     </>
   )
 }

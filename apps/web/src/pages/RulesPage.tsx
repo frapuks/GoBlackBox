@@ -3,6 +3,7 @@ import {
   Box,
   Button,
   Chip,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -15,6 +16,7 @@ import {
   Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import GroupsIcon from '@mui/icons-material/Groups'
@@ -66,6 +68,7 @@ export const RulesPage = () => {
       <SectionHeader
         title="Retard de paiement"
         onAdd={isStaff ? () => setEditing({ create: 'PENALTY' }) : undefined}
+        addLabel="Ajouter une pénalité de retard"
         first
       />
 
@@ -81,6 +84,7 @@ export const RulesPage = () => {
       <SectionHeader
         title="Cotisation"
         onAdd={isStaff ? () => setEditing({ create: 'DUES' }) : undefined}
+        addLabel="Ajouter une cotisation"
       />
 
       {dues.length === 0 && <EmptyState>Aucune cotisation</EmptyState>}
@@ -95,6 +99,7 @@ export const RulesPage = () => {
       <SectionHeader
         title="Règles"
         onAdd={isStaff ? () => setEditing({ create: 'FINE' }) : undefined}
+        addLabel="Ajouter une règle"
       />
 
       {fines.length === 0 && <EmptyState>Aucune règle</EmptyState>}
@@ -152,10 +157,13 @@ export const RulesPage = () => {
 const SectionHeader = ({
   title,
   onAdd,
+  addLabel,
   first = false,
 }: {
   title: string
   onAdd?: () => void
+  /** Décrit ce que le « + » ajoute : c'est le seul texte pour un lecteur d'écran. */
+  addLabel?: string
   first?: boolean
 }) => (
   <Stack
@@ -166,9 +174,9 @@ const SectionHeader = ({
   >
     <SectionTitle sx={{ mb: 0 }}>{title}</SectionTitle>
     {onAdd && (
-      <Button startIcon={<AddIcon />} onClick={onAdd}>
-        Ajouter
-      </Button>
+      <IconButton size="small" color="primary" aria-label={addLabel} onClick={onAdd}>
+        <AddIcon />
+      </IconButton>
     )}
   </Stack>
 )
@@ -189,6 +197,7 @@ const ApplyRuleCard = ({
 }) => {
   const applyRule = useApplyRule()
   const dashboard = useDashboard()
+  const [open, setOpen] = useState(false)
   const archived = rule.archivedAt !== null
   const isPenalty = rule.kind === 'PENALTY'
 
@@ -198,18 +207,16 @@ const ApplyRuleCard = ({
   const targets = isPenalty ? members.filter((m) => m.hasLate) : members
   const count = targets.length
 
-  const apply = () => {
-    const who = isPenalty
-      ? `aux ${count} joueurs ayant une amende en retard`
-      : `aux ${count} membres de l'équipe`
-    if (confirm(`Appliquer « ${rule.label} » (${rule.amount} €) ${who} ?`)) {
-      applyRule.mutate(rule.id)
-    }
-  }
+  const [confirming, setConfirming] = useState(false)
 
   return (
-    <Card sx={{ opacity: archived ? 0.45 : 1 }}>
-      <Stack direction="row" alignItems="center" gap={2}>
+    <Card sx={{ p: 0, overflow: 'hidden', opacity: archived ? 0.45 : 1 }}>
+      {/* Repliée, la carte ne montre que l'essentiel. Description, date de
+          dernière application et bouton d'application vivent dans le panneau. */}
+      <Box
+        onClick={() => setOpen((v) => !v)}
+        sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 2, cursor: 'pointer' }}
+      >
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" spacing={1} alignItems="center">
             <Typography
@@ -220,50 +227,180 @@ const ApplyRuleCard = ({
             </Typography>
             {archived && <Chip size="small" label="Archivée" sx={{ height: 20 }} />}
           </Stack>
+        </Box>
+
+        <Amount amount={rule.amount} state="due" size="lg" />
+
+        <IconButton
+          size="small"
+          aria-label={open ? 'Masquer les détails' : 'Voir les détails'}
+          aria-expanded={open}
+          onClick={(e) => {
+            e.stopPropagation()
+            setOpen((v) => !v)
+          }}
+          sx={{
+            color: palette.textMuted,
+            transition: 'transform .2s',
+            transform: open ? 'rotate(180deg)' : 'none',
+          }}
+        >
+          <ExpandMoreIcon fontSize="small" />
+        </IconButton>
+
+        {isStaff && (
+          <Box onClick={(e) => e.stopPropagation()}>
+            <IconButton size="small" aria-label="Modifier" onClick={onEdit}>
+              <EditOutlinedIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        )}
+      </Box>
+
+      <Collapse in={open} unmountOnExit>
+        <Box sx={{ px: 2, pb: 2, borderTop: '1px solid rgba(148,163,184,0.15)', pt: 1.5 }}>
           {rule.description && (
             <Typography variant="body2" color="text.secondary">
               {rule.description}
             </Typography>
           )}
+
+          {/* Garde-fou principal contre la double application : rien ne
+              l'empêche, mais on voit immédiatement que c'est déjà fait. */}
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            {rule.lastAppliedAt
+              ? 'Dernière application : ' + formatDate(rule.lastAppliedAt)
+              : 'Jamais appliquée'}
+          </Typography>
+
+          {isStaff && !archived && (
+            <Button
+              fullWidth
+              variant="contained"
+              color={isPenalty ? 'error' : 'primary'}
+              startIcon={isPenalty ? <ReportProblemIcon /> : <GroupsIcon />}
+              sx={{ mt: 2 }}
+              disabled={applyRule.isPending || count === 0}
+              onClick={() => setConfirming(true)}
+            >
+              {count === 0
+                ? isPenalty
+                  ? 'Aucun retardataire'
+                  : 'Aucun membre'
+                : isPenalty
+                  ? `Appliquer aux ${count} retardataires`
+                  : `Appliquer aux ${count} membres`}
+            </Button>
+          )}
         </Box>
+      </Collapse>
 
-        <Amount amount={rule.amount} state="due" size="lg" />
+      <ApplyDialog
+        rule={rule}
+        count={count}
+        open={confirming}
+        pending={applyRule.isPending}
+        onClose={() => setConfirming(false)}
+        onConfirm={() => applyRule.mutate(rule.id, { onSuccess: () => setConfirming(false) })}
+      />
+    </Card>
+  )
+}
 
-        {isStaff && (
-          <IconButton size="small" aria-label="Modifier" onClick={onEdit}>
-            <EditOutlinedIcon fontSize="small" />
-          </IconButton>
-        )}
-      </Stack>
+/**
+ * Confirmation d'une application en masse.
+ *
+ * Une application touche toute une partie de l'effectif d'un coup et ne
+ * s'annule pas d'un geste : la boîte annonce donc le montant total engagé et
+ * rappelle la dernière application, seul garde-fou contre le double débit.
+ */
+const ApplyDialog = ({
+  rule,
+  count,
+  open,
+  pending,
+  onClose,
+  onConfirm,
+}: {
+  rule: Rule
+  count: number
+  open: boolean
+  pending: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) => {
+  const isPenalty = rule.kind === 'PENALTY'
 
-      {isStaff && !archived && (
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+      <DialogTitle>{isPenalty ? 'Appliquer la pénalité' : 'Appliquer la cotisation'}</DialogTitle>
+
+      <DialogContent>
+        <Stack spacing={2}>
+          <Typography
+            sx={{ fontFamily: '"Archivo Narrow", sans-serif', fontWeight: 600 }}
+            textTransform="uppercase"
+          >
+            {rule.label}
+          </Typography>
+
+          {/* Le total engagé : c'est l'information qui manque le plus au moment
+              de décider, et elle n'apparaît nulle part ailleurs. */}
+          <Card sx={{ bgcolor: 'rgba(148,163,184,0.08)', textAlign: 'center', py: 2 }}>
+            <Typography variant="overline" color="text.secondary">
+              {count} joueur{count > 1 ? 's' : ''} × {rule.amount} €
+            </Typography>
+            <Typography
+              sx={{
+                fontFamily: '"Bebas Neue", sans-serif',
+                fontSize: '2.5rem',
+                lineHeight: 1.1,
+                color: isPenalty ? palette.danger : palette.accentSoft,
+              }}
+            >
+              + {count * rule.amount} €
+            </Typography>
+          </Card>
+
+          <Typography variant="body2" color="text.secondary">
+            {isPenalty
+              ? "Une amende sera ajoutée à chaque joueur ayant au moins une amende impayée au-delà du délai."
+              : "Une amende sera ajoutée à chaque membre de l'équipe, sans exception."}
+          </Typography>
+
+          {rule.lastAppliedAt && (
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              sx={{
+                p: 1.5,
+                borderRadius: 1,
+                bgcolor: 'rgba(250,204,21,0.10)',
+                color: palette.accentSoft,
+              }}
+            >
+              <ReportProblemIcon fontSize="small" />
+              <Typography variant="body2">
+                Déjà appliquée le {formatDate(rule.lastAppliedAt)}.
+              </Typography>
+            </Stack>
+          )}
+        </Stack>
+      </DialogContent>
+
+      <DialogActions>
+        <Button onClick={onClose}>Annuler</Button>
         <Button
-          fullWidth
           variant="contained"
           color={isPenalty ? 'error' : 'primary'}
-          startIcon={isPenalty ? <ReportProblemIcon /> : <GroupsIcon />}
-          sx={{ mt: 2 }}
-          disabled={applyRule.isPending || count === 0}
-          onClick={apply}
+          onClick={onConfirm}
+          disabled={pending}
         >
-          {count === 0
-            ? isPenalty
-              ? 'Aucun retardataire'
-              : 'Aucun membre'
-            : isPenalty
-              ? `Appliquer aux ${count} retardataires`
-              : `Appliquer aux ${count} membres`}
+          Appliquer
         </Button>
-      )}
-
-      {/* Garde-fou principal contre la double cotisation : rien n'empêche
-          d'appliquer deux fois, mais on voit immédiatement que c'est déjà fait. */}
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-        {rule.lastAppliedAt
-          ? 'Dernière application : ' + formatDate(rule.lastAppliedAt)
-          : 'Jamais appliquée'}
-      </Typography>
-    </Card>
+      </DialogActions>
+    </Dialog>
   )
 }
 
@@ -442,7 +579,6 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
             placeholder={
               isDues ? 'Cotisation de saison' : isPenalty ? 'Pénalité de retard' : ''
             }
-            autoFocus
             required
           />
           <TextField
