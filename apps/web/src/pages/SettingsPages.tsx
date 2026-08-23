@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
-import { Alert, Button, Chip, Divider, IconButton, Stack, TextField, Typography } from '@mui/material'
+import {
+  Alert,
+  Button,
+  Chip,
+  Divider,
+  IconButton,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import AddIcon from '@mui/icons-material/Add'
@@ -103,41 +112,69 @@ const PasswordSection = () => {
   const updateMe = useUpdateMe()
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+
+  const tooShort = newPassword.length > 0 && newPassword.length < 8
+  // On n'alerte qu'une fois la confirmation commencée : signaler une
+  // divergence dès le premier caractère tapé serait du bruit.
+  const mismatch = confirmation.length > 0 && confirmation !== newPassword
+
+  const valid =
+    currentPassword.length > 0 && newPassword.length >= 8 && confirmation === newPassword
 
   return (
     <Section title="Mot de passe">
-      <TextField
-        label="Mot de passe actuel"
-        type="password"
-        autoComplete="current-password"
-        value={currentPassword}
-        onChange={(e) => setCurrentPassword(e.target.value)}
-      />
-      <TextField
-        label="Nouveau mot de passe"
-        type="password"
-        autoComplete="new-password"
-        value={newPassword}
-        onChange={(e) => setNewPassword(e.target.value)}
-        helperText="8 caractères minimum"
-      />
-      <Button
-        variant="contained"
-        disabled={!currentPassword || !newPassword || updateMe.isPending}
-        onClick={() =>
-          updateMe.mutate(
-            { currentPassword, newPassword },
-            {
-              onSuccess: () => {
-                setCurrentPassword('')
-                setNewPassword('')
+      {/* Les trois champs réservent la place de leur message d'aide, y compris
+          quand ils n'en ont pas : sinon les écarts diffèrent d'un champ à
+          l'autre, et l'apparition d'une erreur décale le bouton.
+          L'espacement du groupe est réduit d'autant, la place réservée
+          faisant déjà office de respiration. */}
+      <Stack spacing={1}>
+        <TextField
+          label="Mot de passe actuel"
+          type="password"
+          autoComplete="current-password"
+          value={currentPassword}
+          onChange={(e) => setCurrentPassword(e.target.value)}
+          helperText=" "
+        />
+        <TextField
+          label="Nouveau mot de passe"
+          type="password"
+          autoComplete="new-password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          error={tooShort}
+          helperText={tooShort ? '8 caractères minimum' : ' '}
+        />
+        <TextField
+          label="Confirmer le nouveau mot de passe"
+          type="password"
+          autoComplete="new-password"
+          value={confirmation}
+          onChange={(e) => setConfirmation(e.target.value)}
+          error={mismatch}
+          helperText={mismatch ? 'Les deux mots de passe ne correspondent pas' : ' '}
+        />
+        <Button
+          variant="contained"
+          disabled={!valid || updateMe.isPending}
+          onClick={() =>
+            updateMe.mutate(
+              { currentPassword, newPassword },
+              {
+                onSuccess: () => {
+                  setCurrentPassword('')
+                  setNewPassword('')
+                  setConfirmation('')
+                },
               },
-            },
-          )
-        }
-      >
-        Changer le mot de passe
-      </Button>
+            )
+          }
+        >
+          Changer le mot de passe
+        </Button>
+      </Stack>
     </Section>
   )
 }
@@ -256,9 +293,9 @@ const InviteCodeSection = () => {
         }
       >
         <Typography variant="body2" color="text.secondary">
-          L&apos;ancien code cessera immédiatement de fonctionner : les joueurs à qui tu
-          l&apos;as déjà communiqué ne pourront plus créer leur compte. Les comptes
-          existants ne sont pas affectés.
+          L&apos;ancien code cessera immédiatement de fonctionner : les joueurs à qui tu l&apos;as
+          déjà communiqué ne pourront plus créer leur compte. Les comptes existants ne sont pas
+          affectés.
         </Typography>
       </ConfirmDialog>
     </Section>
@@ -272,8 +309,8 @@ const AddParticipantSection = () => {
   return (
     <Section title="Ajouter un participant">
       <Typography variant="caption" color="text.secondary">
-        Un participant sans compte peut déjà recevoir des amendes. Il rattachera son
-        compte plus tard avec le code d&apos;invitation.
+        Un participant sans compte peut déjà recevoir des amendes. Il rattachera son compte plus
+        tard avec le code d&apos;invitation.
       </Typography>
       <TextField label="Nom affiché" value={newName} onChange={(e) => setNewName(e.target.value)} />
       <Button
@@ -319,7 +356,10 @@ const MembersSection = () => {
                 <Chip
                   size="small"
                   label="Pas inscrit"
-                  sx={{ bgcolor: 'rgba(148,163,184,0.15)', color: palette.textMuted }}
+                  sx={{
+                    bgcolor: 'rgba(148,163,184,0.15)',
+                    color: palette.textMuted,
+                  }}
                 />
               ) : m.role === 'ADMIN' ? (
                 <Chip size="small" label="Admin" color="secondary" />
