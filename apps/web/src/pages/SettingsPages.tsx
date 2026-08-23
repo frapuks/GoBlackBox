@@ -4,6 +4,10 @@ import {
   Alert,
   Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   IconButton,
   Stack,
@@ -70,7 +74,6 @@ export const SettingsPage = () => {
           </Divider>
 
           <InviteCodeSection />
-          <AddParticipantSection />
           <MembersSection />
         </>
       )}
@@ -302,28 +305,42 @@ const InviteCodeSection = () => {
   )
 }
 
-const AddParticipantSection = () => {
+/** Création d'un participant, ouverte depuis le « + » de la section Membres. */
+const AddParticipantDialog = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
   const createMember = useCreateMember()
-  const [newName, setNewName] = useState('')
+  const [name, setName] = useState('')
+
+  // Repart d'un champ vide à chaque ouverture, sinon on retrouve le nom
+  // précédemment saisi.
+  useEffect(() => {
+    if (open) setName('')
+  }, [open])
 
   return (
-    <Section title="Ajouter un participant">
-      <Typography variant="caption" color="text.secondary">
-        Un participant sans compte peut déjà recevoir des amendes. Il rattachera son compte plus
-        tard avec le code d&apos;invitation.
-      </Typography>
-      <TextField label="Nom affiché" value={newName} onChange={(e) => setNewName(e.target.value)} />
-      <Button
-        startIcon={<AddIcon />}
-        variant="contained"
-        disabled={!newName || createMember.isPending}
-        onClick={() =>
-          createMember.mutate({ displayName: newName }, { onSuccess: () => setNewName('') })
-        }
-      >
-        Créer
-      </Button>
-    </Section>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+      <DialogTitle>Ajouter un participant</DialogTitle>
+      <DialogContent>
+        <TextField
+          label="Nom affiché"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          fullWidth
+          sx={{ mt: 1 }}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Annuler</Button>
+        <Button
+          variant="contained"
+          disabled={!name.trim() || createMember.isPending}
+          onClick={() =>
+            createMember.mutate({ displayName: name.trim() }, { onSuccess: onClose })
+          }
+        >
+          Créer
+        </Button>
+      </DialogActions>
+    </Dialog>
   )
 }
 
@@ -331,10 +348,28 @@ const MembersSection = () => {
   const me = useMe()
   const members = useMembers()
   const updateRole = useUpdateRole()
+  const [adding, setAdding] = useState(false)
 
   return (
     <>
-      <SectionTitle>Membres</SectionTitle>
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="center"
+        sx={{ mb: 1.5, minHeight: 40 }}
+      >
+        <SectionTitle sx={{ mb: 0 }}>Membres</SectionTitle>
+        <IconButton
+          size="small"
+          color="primary"
+          aria-label="Ajouter un participant"
+          onClick={() => setAdding(true)}
+        >
+          <AddIcon />
+        </IconButton>
+      </Stack>
+
+      <AddParticipantDialog open={adding} onClose={() => setAdding(false)} />
 
       <Stack spacing={1} sx={{ mb: 2 }}>
         {members.data?.map((m) => {
