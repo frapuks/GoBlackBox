@@ -4,6 +4,8 @@ import { Alert, Button, Chip, Divider, IconButton, Stack, TextField, Typography 
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import AddIcon from '@mui/icons-material/Add'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
+import CheckIcon from '@mui/icons-material/Check'
 import {
   useCreateMember,
   useLogout,
@@ -140,10 +142,68 @@ const PasswordSection = () => {
   )
 }
 
+/**
+ * Message d'invitation prêt à coller dans une conversation d'équipe.
+ *
+ * L'URL vient de `window.location.origin` : elle suit donc le domaine réel,
+ * sans valeur en dur à maintenir entre le local et le Raspberry Pi.
+ */
+const invitationText = (code: string) =>
+  [
+    "Rejoins la caisse noire de l'équipe 🤾",
+    '',
+    `1. Ouvre ${window.location.origin}`,
+    `2. Crée ton compte avec le code : ${code}`,
+    '3. Choisis ton nom dans la liste',
+    '',
+    "Pour l'installer comme une appli sur ton téléphone :",
+    '',
+    '• iPhone — ouvre le lien dans Safari, bouton Partager, puis',
+    "  « Sur l'écran d'accueil ».",
+    '• Android — ouvre le lien dans Chrome, menu ⋮, puis',
+    "  « Ajouter à l'écran d'accueil ».",
+  ].join('\n')
+
+/**
+ * `navigator.clipboard` exige un contexte sécurisé : il est absent en HTTP
+ * simple, par exemple si tu ouvres l'app par l'IP du Pi. D'où le repli sur
+ * la vieille méthode, qui fonctionne partout.
+ */
+const copyToClipboard = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    const area = document.createElement('textarea')
+    area.value = text
+    area.style.position = 'fixed'
+    area.style.opacity = '0'
+    document.body.appendChild(area)
+    area.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(area)
+    return ok
+  }
+}
+
 const InviteCodeSection = () => {
   const settings = useSettings()
   const updateSettings = useUpdateSettings()
   const [confirming, setConfirming] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
+
+  const copy = async () => {
+    const code = settings.data?.inviteCode
+    if (!code) return
+
+    if (await copyToClipboard(invitationText(code))) {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2500)
+    } else {
+      setCopyFailed(true)
+    }
+  }
 
   return (
     <Section title="Code d'invitation">
@@ -159,13 +219,27 @@ const InviteCodeSection = () => {
         >
           {settings.data?.inviteCode}
         </Typography>
+        <IconButton
+          aria-label={copied ? 'Invitation copiée' : "Copier l'invitation"}
+          onClick={copy}
+          sx={{ color: copied ? palette.accent : undefined }}
+        >
+          {copied ? <CheckIcon /> : <ContentCopyIcon />}
+        </IconButton>
         <IconButton aria-label="Régénérer" onClick={() => setConfirming(true)}>
           <RefreshIcon />
         </IconButton>
       </Stack>
-      <Typography variant="caption" color="text.secondary">
-        À communiquer aux joueurs pour qu&apos;ils puissent créer leur compte.
-      </Typography>
+
+      {copyFailed && (
+        <TextField
+          label="Copie automatique impossible — sélectionne et copie à la main"
+          value={settings.data ? invitationText(settings.data.inviteCode ?? '') : ''}
+          multiline
+          minRows={6}
+          onFocus={(e) => e.target.select()}
+        />
+      )}
 
       <ConfirmDialog
         open={confirming}
