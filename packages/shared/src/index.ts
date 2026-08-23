@@ -206,15 +206,30 @@ export type Fine = {
  * Le renouvellement du code a sa propre route : il est ouvert aux
  * gestionnaires, contrairement à ces deux réglages.
  */
+/**
+ * Réglages du quotidien : un gestionnaire les ajuste.
+ * Les interrupteurs de fonctionnalité ont leur propre route, réservée à
+ * l'admin — deux routes plutôt qu'un contrôle par champ, la garde est alors
+ * entièrement portée par le `preHandler`.
+ */
 export const updateSettingsInput = z.object({
   lateAfterDays: z.number().int().min(1).max(365).optional(),
+})
+
+/** Ce que l'équipe utilise. Activer ou couper engage tout le monde : admin. */
+export const updateFeaturesInput = z.object({
   allowPlayerReports: z.boolean().optional(),
+  enablePenalties: z.boolean().optional(),
+  enableDues: z.boolean().optional(),
 })
 
 export type Settings = {
   lateAfterDays: number
   /** Les joueurs peuvent-ils signaler une amende, à valider par un gestionnaire ? */
   allowPlayerReports: boolean
+  /** Sections de l'écran Règles que l'équipe utilise réellement. */
+  enablePenalties: boolean
+  enableDues: boolean
   /** Présent uniquement pour l'ADMIN : ne doit jamais fuiter vers un joueur. */
   inviteCode?: string
 }

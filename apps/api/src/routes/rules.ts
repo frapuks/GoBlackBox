@@ -83,8 +83,26 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
     return rows.map(toRule)
   })
 
+  /**
+   * Une fonctionnalité coupée par l'admin ne doit pas pouvoir être alimentée
+   * en douce : le front masque la section, le serveur refuse la création.
+   */
+  const assertKindEnabled = async (kind: RuleKind) => {
+    if (kind === 'FINE') return
+    const row = await queryOne<{ enable_penalties: boolean; enable_dues: boolean }>(
+      'SELECT enable_penalties, enable_dues FROM settings WHERE id = 1',
+    )
+    const enabled = kind === 'PENALTY' ? row?.enable_penalties : row?.enable_dues
+    if (!enabled) {
+      throw app.httpErrors.forbidden(
+        kind === 'PENALTY' ? 'Les pénalités sont désactivées' : 'Les cotisations sont désactivées',
+      )
+    }
+  }
+
   app.post('/rules', staff, async (req, reply): Promise<Rule> => {
     const body = createRuleInput.parse(req.body)
+    await assertKindEnabled(body.kind)
     if (body.kind !== 'FINE' && body.tiers.length) {
       throw app.httpErrors.badRequest('Seule une règle d’infraction peut avoir des paliers')
     }
@@ -185,6 +203,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
           "Une règle d'infraction se donne depuis l'écran d'ajout d'amende",
         )
       }
+      await assertKindEnabled(rule.kind)
 
       // Le sous-SELECT est évalué sur l'état d'AVANT l'insertion : les amendes
       // créées par cette requête ne rendent donc personne éligible en cascade.

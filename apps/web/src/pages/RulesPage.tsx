@@ -57,6 +57,11 @@ export const RulesPage = () => {
 
   const isStaff = me.data?.user.role === 'ADMIN' || me.data?.user.role === 'MANAGER'
 
+  // Sections coupées par l'admin : on masque plutôt que de laisser un titre
+  // et un bouton pour une fonctionnalité que l'équipe n'utilise pas.
+  const showPenalties = settings.data?.enablePenalties !== false
+  const showDues = settings.data?.enableDues !== false
+
   const dues = rules.data?.filter((r) => r.kind === 'DUES') ?? []
   const penalties = rules.data?.filter((r) => r.kind === 'PENALTY') ?? []
   const fines = rules.data?.filter((r) => r.kind === 'FINE') ?? []
@@ -64,43 +69,53 @@ export const RulesPage = () => {
   return (
     <>
       {/* ------------------------------------------- Retard de paiement */}
-      <SectionHeader
-        title="Retard de paiement"
-        onAdd={isStaff ? () => setEditing({ create: 'PENALTY' }) : undefined}
-        addLabel="Ajouter une pénalité de retard"
-        first
-      />
+      {showPenalties && (
+        <>
+          <SectionHeader
+            title="Retard de paiement"
+            onAdd={isStaff ? () => setEditing({ create: 'PENALTY' }) : undefined}
+            addLabel="Ajouter une pénalité de retard"
+            first
+          />
 
-      {/* Le délai de retard relève du quotidien de l'équipe, pas du paramétrage
+          {/* Le délai de retard relève du quotidien de l'équipe, pas du paramétrage
           de l'app : un gestionnaire l'ajuste comme il ajuste les règles. */}
-      <LateDelayCard lateAfterDays={settings.data?.lateAfterDays} editable={isStaff} />
+          <LateDelayCard lateAfterDays={settings.data?.lateAfterDays} editable={isStaff} />
 
-      <Stack spacing={1}>
-        {penalties.map((r) => (
-          <ApplyRuleCard key={r.id} rule={r} isStaff={isStaff} onEdit={() => setEditing(r)} />
-        ))}
-      </Stack>
+          <Stack spacing={1}>
+            {penalties.map((r) => (
+              <ApplyRuleCard key={r.id} rule={r} isStaff={isStaff} onEdit={() => setEditing(r)} />
+            ))}
+          </Stack>
+        </>
+      )}
 
       {/* ------------------------------------------------- Cotisation */}
-      <SectionHeader
-        title="Cotisation"
-        onAdd={isStaff ? () => setEditing({ create: 'DUES' }) : undefined}
-        addLabel="Ajouter une cotisation"
-      />
+      {showDues && (
+        <>
+          <SectionHeader
+            title="Cotisation"
+            onAdd={isStaff ? () => setEditing({ create: 'DUES' }) : undefined}
+            addLabel="Ajouter une cotisation"
+            first={!showPenalties}
+          />
 
-      {dues.length === 0 && <EmptyState>Aucune cotisation</EmptyState>}
+          {dues.length === 0 && <EmptyState>Aucune cotisation</EmptyState>}
 
-      <Stack spacing={1}>
-        {dues.map((r) => (
-          <ApplyRuleCard key={r.id} rule={r} isStaff={isStaff} onEdit={() => setEditing(r)} />
-        ))}
-      </Stack>
+          <Stack spacing={1}>
+            {dues.map((r) => (
+              <ApplyRuleCard key={r.id} rule={r} isStaff={isStaff} onEdit={() => setEditing(r)} />
+            ))}
+          </Stack>
+        </>
+      )}
 
       {/* ----------------------------------------------------- Règles */}
       <SectionHeader
         title="Règles"
         onAdd={isStaff ? () => setEditing({ create: 'FINE' }) : undefined}
         addLabel="Ajouter une règle"
+        first={!showPenalties && !showDues}
       />
 
       {fines.length === 0 && <EmptyState>Aucune règle</EmptyState>}
@@ -365,7 +380,7 @@ const ApplyDialog = ({
 
           <Typography variant="body2" color="text.secondary">
             {isPenalty
-              ? "Une amende sera ajoutée à chaque joueur ayant au moins une amende impayée au-delà du délai."
+              ? 'Une amende sera ajoutée à chaque joueur ayant au moins une amende impayée au-delà du délai.'
               : "Une amende sera ajoutée à chaque membre de l'équipe, sans exception."}
           </Typography>
 
@@ -481,8 +496,7 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
   // `rule` non nul = édition, sinon création. TypeScript a besoin du test
   // `'id' in target` sur `target` lui-même pour discriminer l'union.
   const rule = target && 'id' in target ? target : null
-  const kind: RuleKind =
-    target === null ? 'FINE' : 'id' in target ? target.kind : target.create
+  const kind: RuleKind = target === null ? 'FINE' : 'id' in target ? target.kind : target.create
   const isDues = kind === 'DUES'
   const isPenalty = kind === 'PENALTY'
 
@@ -557,8 +571,7 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
     }
   }
 
-  const noun =
-    kind === 'DUES' ? 'la cotisation' : kind === 'PENALTY' ? 'la pénalité' : 'la règle'
+  const noun = kind === 'DUES' ? 'la cotisation' : kind === 'PENALTY' ? 'la pénalité' : 'la règle'
   const newNoun =
     kind === 'DUES'
       ? 'Nouvelle cotisation'
@@ -577,9 +590,7 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
             label="Libellé"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder={
-              isDues ? 'Cotisation de saison' : isPenalty ? 'Pénalité de retard' : ''
-            }
+            placeholder={isDues ? 'Cotisation de saison' : isPenalty ? 'Pénalité de retard' : ''}
             required
           />
           <TextField
@@ -707,16 +718,13 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
             <>
               <FormControlLabel
                 control={
-                  <Switch
-                    checked={archived}
-                    onChange={(e) => setArchived(e.target.checked)}
-                  />
+                  <Switch checked={archived} onChange={(e) => setArchived(e.target.checked)} />
                 }
                 label={<Typography variant="body2">Archiver {noun}</Typography>}
               />
               <Typography variant="caption" color="text.secondary">
-                Une fois archivée, elle n&apos;est plus proposée à la saisie, mais les
-                amendes déjà données restent intactes.
+                Une fois archivée, elle n&apos;est plus proposée à la saisie, mais les amendes déjà
+                données restent intactes.
               </Typography>
             </>
           )}

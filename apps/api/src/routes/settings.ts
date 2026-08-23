@@ -1,5 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { updateMeInput, updateSettingsInput, type Me, type Settings } from '@blackbox/shared'
+import {
+  updateFeaturesInput,
+  updateMeInput,
+  updateSettingsInput,
+  type Me,
+  type Settings,
+} from '@blackbox/shared'
 import { generateInviteCode, hashPassword, verifyPassword } from '../auth.js'
 import { queryOne, transaction } from '../db.js'
 
@@ -20,17 +26,21 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
   type SettingsRow = {
     late_after_days: number
     allow_player_reports: boolean
+    enable_penalties: boolean
+    enable_dues: boolean
     invite_code: string
   }
 
   app.get('/settings', auth, async (req): Promise<Settings> => {
     const row = await queryOne<SettingsRow>(
-      'SELECT late_after_days, allow_player_reports, invite_code FROM settings WHERE id = 1',
+      'SELECT late_after_days, allow_player_reports, enable_penalties, enable_dues, invite_code FROM settings WHERE id = 1',
     )
 
     const base: Settings = {
       lateAfterDays: row!.late_after_days,
       allowPlayerReports: row!.allow_player_reports,
+      enablePenalties: row!.enable_penalties,
+      enableDues: row!.enable_dues,
     }
 
     // Les gestionnaires distribuent le code au même titre que l'admin.
@@ -39,38 +49,53 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     return isStaff ? { ...base, inviteCode: row!.invite_code } : base
   })
 
-  /**
-   * Deux champs de sensibilité différente sur la même route :
-   *  - `lateAfterDays` relève du quotidien, un gestionnaire l'ajuste ;
-   *  - `allowPlayerReports` ouvre une fonctionnalité à toute l'équipe, c'est
-   *    une décision d'administrateur.
-   *
-   * D'où un contrôle par CHAMP plutôt qu'un `preHandler` : le second serait
-   * soit trop permissif, soit trop restrictif.
-   */
+  const RETURNING =
+    'RETURNING late_after_days, allow_player_reports, enable_penalties, enable_dues, invite_code'
+
+  const toSettings = (row: SettingsRow): Settings => ({
+    lateAfterDays: row.late_after_days,
+    allowPlayerReports: row.allow_player_reports,
+    enablePenalties: row.enable_penalties,
+    enableDues: row.enable_dues,
+    inviteCode: row.invite_code,
+  })
+
+  /** Réglage du quotidien : un gestionnaire ajuste le délai comme il ajuste les règles. */
   app.patch('/settings', staff, async (req): Promise<Settings> => {
     const body = updateSettingsInput.parse(req.body)
 
-    if (body.allowPlayerReports !== undefined && req.currentUser.role !== 'ADMIN') {
-      throw app.httpErrors.forbidden("Les signalements relèvent de l'administrateur")
-    }
-
     const row = await queryOne<SettingsRow>(
-      `UPDATE settings
-          SET late_after_days      = COALESCE($1, late_after_days),
-              allow_player_reports = COALESCE($2, allow_player_reports)
-        WHERE id = 1
-        RETURNING late_after_days, allow_player_reports, invite_code`,
-      [body.lateAfterDays ?? null, body.allowPlayerReports ?? null],
+      `UPDATE settings SET late_after_days = COALESCE($1, late_after_days)
+        WHERE id = 1 ${RETURNING}`,
+      [body.lateAfterDays ?? null],
     )
 
     // Changer lateAfterDays reclasse instantanément tout l'historique,
     // puisque le retard est calculé à la volée. C'est voulu.
-    return {
-      lateAfterDays: row!.late_after_days,
-      allowPlayerReports: row!.allow_player_reports,
-      inviteCode: row!.invite_code,
-    }
+    return toSettings(row!)
+  })
+
+  /**
+   * Fonctionnalités de la caisse. Couper les pénalités éteint aussi toute la
+   * notion de retard — badges compris — puisque le calcul dépend du réglage.
+   */
+  app.patch('/settings/features', adminOnly, async (req): Promise<Settings> => {
+    const body = updateFeaturesInput.parse(req.body)
+
+    const row = await queryOne<SettingsRow>(
+      `UPDATE settings
+          SET allow_player_reports = COALESCE($1, allow_player_reports),
+              enable_penalties     = COALESCE($2, enable_penalties),
+              enable_dues          = COALESCE($3, enable_dues)
+        WHERE id = 1 ${RETURNING}`,
+      [
+        body.allowPlayerReports ?? null,
+        body.enablePenalties ?? null,
+        body.enableDues ?? null,
+      ],
+    )
+
+    return toSettings(row!)
   })
 
   /**
@@ -80,16 +105,11 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
    */
   app.post('/settings/invite-code', adminOnly, async (): Promise<Settings> => {
     const row = await queryOne<SettingsRow>(
-      `UPDATE settings SET invite_code = $1 WHERE id = 1
-        RETURNING late_after_days, allow_player_reports, invite_code`,
+      `UPDATE settings SET invite_code = $1 WHERE id = 1 ${RETURNING}`,
       [generateInviteCode()],
     )
 
-    return {
-      lateAfterDays: row!.late_after_days,
-      allowPlayerReports: row!.allow_player_reports,
-      inviteCode: row!.invite_code,
-    }
+    return toSettings(row!)
   })
 
   app.patch('/me', auth, async (req): Promise<Me> => {

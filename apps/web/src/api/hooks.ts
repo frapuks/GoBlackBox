@@ -216,12 +216,13 @@ export const useUpdateRole = () =>
   )
 
 export const useUpdateSettings = () =>
+  useDataMutation((v: { lateAfterDays?: number }) => patch<Settings>('/settings', v))
+
+/** Interrupteurs de fonctionnalité : route distincte, réservée à l'admin. */
+export const useUpdateFeatures = () =>
   useDataMutation(
-    (v: {
-      lateAfterDays?: number
-      allowPlayerReports?: boolean
-    }) =>
-    patch<Settings>('/settings', v),
+    (v: { allowPlayerReports?: boolean; enablePenalties?: boolean; enableDues?: boolean }) =>
+      patch<Settings>('/settings/features', v),
   )
 
 /** Renouvellement du code : action de distribution, ouverte aux gestionnaires. */

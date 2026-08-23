@@ -29,6 +29,7 @@ import {
   useRegenerateInviteCode,
   useSettings,
   useUpdateMe,
+  useUpdateFeatures,
   useUpdateRole,
   useUpdateSettings,
 } from '../api/hooks'
@@ -82,7 +83,7 @@ export const SettingsPage = () => {
           {/* Un gestionnaire administre le quotidien : code d'invitation,
               participants. Restent à l'admin seul les deux décisions qui
               engagent l'équipe — les rôles et l'ouverture des signalements. */}
-          <PlayerReportsSection canEdit={isAdmin} />
+          <FeaturesSection canEdit={isAdmin} />
           <InviteCodeSection canRegenerate={isAdmin} />
           <MembersSection canManage={isAdmin} />
         </>
@@ -243,27 +244,46 @@ const PasswordSection = () => {
 }
 
 /**
- * Ouvre la saisie aux joueurs, sous forme de signalements à valider.
- * Désactivé par défaut : élargir qui peut créer des amendes est une décision.
+ * Ce que l'équipe utilise réellement. Couper une fonctionnalité fait
+ * disparaître la section correspondante au lieu de laisser un écran encombré
+ * de choses inutilisées.
  */
-const PlayerReportsSection = ({ canEdit }: { canEdit: boolean }) => {
+const FeaturesSection = ({ canEdit }: { canEdit: boolean }) => {
   const settings = useSettings()
-  const updateSettings = useUpdateSettings()
+  const updateFeatures = useUpdateFeatures()
+
+  const toggle = (
+    label: string,
+    value: boolean | undefined,
+    field: 'allowPlayerReports' | 'enablePenalties' | 'enableDues',
+    fallback: boolean,
+  ) => (
+    <FormControlLabel
+      sx={{ ml: 0, justifyContent: 'space-between' }}
+      labelPlacement="start"
+      control={
+        <Switch
+          checked={value ?? fallback}
+          disabled={!canEdit || settings.isPending || updateFeatures.isPending}
+          onChange={(e) => updateFeatures.mutate({ [field]: e.target.checked })}
+        />
+      }
+      label={<Typography variant="body2">{label}</Typography>}
+    />
+  )
 
   return (
-    <Section title="Signalements">
-      <FormControlLabel
-        sx={{ ml: 0, justifyContent: 'space-between' }}
-        labelPlacement="start"
-        control={
-          <Switch
-            checked={settings.data?.allowPlayerReports ?? false}
-            disabled={!canEdit || settings.isPending || updateSettings.isPending}
-            onChange={(e) => updateSettings.mutate({ allowPlayerReports: e.target.checked })}
-          />
-        }
-        label={<Typography variant="body2">Les joueurs peuvent signaler une amende</Typography>}
-      />
+    <Section title="Fonctionnalités">
+      <Stack spacing={0}>
+        {toggle('Pénalités de retard', settings.data?.enablePenalties, 'enablePenalties', true)}
+        {toggle('Cotisations', settings.data?.enableDues, 'enableDues', true)}
+        {toggle(
+          'Signalements par les joueurs',
+          settings.data?.allowPlayerReports,
+          'allowPlayerReports',
+          false,
+        )}
+      </Stack>
 
       {/* Un interrupteur grisé sans explication laisse croire à une panne. */}
       {!canEdit && (

@@ -96,6 +96,7 @@ fines     id, member_id, rule_id, amount, label,
           created_by, created_at, paid_at
 
 settings  id = 1 (CHECK), invite_code,
+          allow_player_reports, enable_penalties, enable_dues,
           late_after_days INTEGER NOT NULL DEFAULT 7 CHECK (> 0)
           -- pas de notion de saison dans l'app
 ```
@@ -163,7 +164,7 @@ Changer `late_after_days` reclasse instantanément tout l'historique. C'est voul
 | **Ajouter** un participant | ✅ | ❌ | ❌ |
 | **Régénérer** le code d invitation | ✅ | ❌ | ❌ |
 | Donner / retirer le rôle MANAGER | ✅ | ❌ | ❌ |
-| Activer les signalements des joueurs | ✅ | ❌ | ❌ |
+| Activer une fonctionnalité (pénalités, cotisations, signalements) | ✅ | ❌ | ❌ |
 
 ADMIN est **unique et non transférable** en V1.
 
@@ -223,8 +224,8 @@ PATCH  /fines/:id/paid        admin/manager
 PATCH  /me                    displayName, mot de passe
 GET    /settings              tous  → { lateAfterDays }
                               admin → + { inviteCode }
-PATCH  /settings              admin/manager pour lateAfterDays
-                              admin SEUL pour allowPlayerReports
+PATCH  /settings              admin/manager — lateAfterDays
+PATCH  /settings/features     admin — pénalités, cotisations, signalements
 POST   /settings/invite-code  admin — renouvelle le code
 ```
 
@@ -444,3 +445,47 @@ garantit qu'une double validation ne déclenche qu'une notification.
 
 Désactiver le réglage n'efface rien : les signalements déjà déposés restent à
 valider, seule la création de nouveaux est bloquée.
+
+---
+
+## 11. Fonctionnalités activables
+
+Trois interrupteurs, **réservés à l'admin**, dans Réglages → Fonctionnalités :
+
+| Réglage | Défaut | Effet |
+|---|---|---|
+| Pénalités de retard | activé | masque la section *Retard de paiement* **et éteint toute la notion de retard** |
+| Cotisations | activé | masque la section *Cotisation* |
+| Signalements par les joueurs | désactivé | ouvre la saisie aux joueurs |
+
+Les deux premiers sont activés par défaut : c'est le comportement existant, une
+mise à jour ne doit rien faire disparaître.
+
+Couper une fonctionnalité **ne supprime rien** — les règles restent en base et
+réapparaissent telles quelles si on la réactive. Ce qui change :
+
+- la section disparaît de l'écran Règles ;
+- ses règles ne sont plus proposées à l'écran d'ajout d'amende ;
+- le serveur **refuse** d'en créer une nouvelle ou d'appliquer une existante.
+
+Ce dernier point compte : le masquage côté front n'est qu'un confort, et un
+appel forgé ne doit pas pouvoir alimenter une fonctionnalité éteinte.
+
+### Couper les pénalités éteint tout le retard
+
+Plus aucun badge « en retard » nulle part — fil, classement, fiches membres — et
+le délai en jours disparaît avec la section.
+
+La condition vit dans **`IS_LATE_SQL`**, le fragment SQL partagé par toutes les
+requêtes :
+
+```sql
+s.enable_penalties
+AND f.status = 'CONFIRMED'
+AND f.paid_at IS NULL
+AND (f.created_at AT TIME ZONE 'Europe/Paris')::date + s.late_after_days
+    <= (NOW() AT TIME ZONE 'Europe/Paris')::date
+```
+
+Aucun écran n'a donc à s'en soucier, et surtout aucun ne peut l'oublier : le
+serveur renvoie simplement `isLate: false` partout.
