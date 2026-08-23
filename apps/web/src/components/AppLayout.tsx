@@ -66,12 +66,18 @@ export const AppLayout = () => {
   const adding = pathname === '/fines/new'
 
   return (
-    // Colonne haute d'un écran : la barre est la dernière ligne du flux, pas un
-    // élément positionné. Au lancement d'une PWA iOS, WebKit calcule la hauteur
-    // du layout viewport avant d'y intégrer la zone du home indicator : un
-    // `position: fixed; bottom: 0` s'accroche alors à un bas d'écran provisoire
-    // et paraît surélevé jusqu'au premier défilement.
-    <Box sx={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    // Cadre plein écran SANS unité de hauteur de viewport.
+    //
+    // `inset: 0` est résolu par rapport au viewport au moment du rendu, alors
+    // que `100dvh` est une longueur calculée — et c'est celle-là qu'iOS évalue
+    // trop tôt au lancement d'une app installée sur l'écran d'accueil, d'où une
+    // barre du bas légèrement décalée jusqu'au premier défilement.
+    //
+    // La barre reste la dernière ligne d'une colonne flex, donc elle n'est pas
+    // positionnée elle-même : elle suit le bas de son conteneur.
+    <Box
+      sx={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column' }}
+    >
       <Box component="main" sx={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain' }}>
         {/* La marge basse dégage le débordement du bouton central, sinon les
             dernières lignes passent dessous en fin de défilement. */}
