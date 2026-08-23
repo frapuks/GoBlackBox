@@ -9,10 +9,18 @@ import {
   Stack,
   Typography,
 } from '@mui/material'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import FilterListIcon from '@mui/icons-material/FilterList'
 import type { Fine } from '@blackbox/shared'
-import { useDeleteFine, useFines, useMe, useMembers, useSetFinePaid } from '../api/hooks'
+import {
+  useConfirmFine,
+  useDeleteFine,
+  useFines,
+  useMe,
+  useMembers,
+  useSetFinePaid,
+} from '../api/hooks'
 import {
   Amount,
   Card,
@@ -41,8 +49,16 @@ export const FeedPage = () => {
   const fines = useFines({ unpaid, memberId: memberId || undefined })
   const setPaid = useSetFinePaid()
   const remove = useDeleteFine()
+  const confirmFine = useConfirmFine()
 
   const isStaff = me.data?.user.role === 'ADMIN' || me.data?.user.role === 'MANAGER'
+
+  /**
+   * Un joueur peut retirer son propre signalement tant qu'il est en attente.
+   * Une fois validé, il ne lui appartient plus.
+   */
+  const isMyReport = (f: Fine) =>
+    f.status === 'PENDING' && f.createdById === me.data?.member?.id
 
   return (
     <>
@@ -78,6 +94,7 @@ export const FeedPage = () => {
       <Stack spacing={1}>
         {fines.data?.map((f) => {
           const paid = f.paidAt !== null
+          const pending = f.status === 'PENDING'
 
           return (
             <Card
@@ -90,10 +107,12 @@ export const FeedPage = () => {
                 // Une amende payée s'estompe entièrement, exactement comme sur
                 // la fiche membre : c'est de l'archive, pas de l'actionnable.
                 opacity: paid ? 0.5 : 1,
-                // Liseré rouge repérable au défilement, comme sur la fiche
-                // membre. La bordure transparente garde l'alignement du texte
+                // Liseré : rouge pour un retard, orange pour un signalement en
+                // attente. La bordure transparente garde l'alignement du texte
                 // identique sur toutes les lignes.
-                borderLeft: f.isLate ? '3px solid ' + palette.danger : '3px solid transparent',
+                borderLeft: `3px solid ${
+                  pending ? palette.accent : f.isLate ? palette.danger : 'transparent'
+                }`,
               }}
             >
               <Stack sx={{ flex: 1, minWidth: 0 }}>
@@ -115,23 +134,46 @@ export const FeedPage = () => {
 
               <Amount amount={f.amount} state={fineState(paid, f.isLate)} />
 
-              <StatusChip state={fineState(paid, f.isLate)} />
+              {pending ? (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label="À valider"
+                  sx={{ color: palette.accent, borderColor: palette.accent, height: 22 }}
+                />
+              ) : (
+                <StatusChip state={fineState(paid, f.isLate)} />
+              )}
 
-              {isStaff && (
-                <>
+              {isStaff &&
+                (pending ? (
+                  // Un signalement se valide ou se supprime. Le cocher payé
+                  // n'aurait aucun sens tant qu'il n'est pas entériné.
+                  <IconButton
+                    size="small"
+                    aria-label="Valider ce signalement"
+                    onClick={() => confirmFine.mutate(f.id)}
+                    disabled={confirmFine.isPending}
+                    sx={{ color: palette.accent }}
+                  >
+                    <CheckCircleIcon />
+                  </IconButton>
+                ) : (
                   <Checkbox
                     checked={paid}
                     onChange={(e) => setPaid.mutate({ id: f.id, paid: e.target.checked })}
                     inputProps={{ 'aria-label': 'Marquer comme payée' }}
                   />
-                  <IconButton
-                    size="small"
-                    aria-label="Supprimer"
-                    onClick={() => setDeleting(f)}
-                  >
-                    <DeleteOutlineIcon fontSize="small" sx={{ color: palette.textMuted }} />
-                  </IconButton>
-                </>
+                ))}
+
+              {(isStaff || isMyReport(f)) && (
+                <IconButton
+                  size="small"
+                  aria-label={isStaff ? 'Supprimer' : 'Annuler mon signalement'}
+                  onClick={() => setDeleting(f)}
+                >
+                  <DeleteOutlineIcon fontSize="small" sx={{ color: palette.textMuted }} />
+                </IconButton>
               )}
             </Card>
           )
@@ -140,8 +182,10 @@ export const FeedPage = () => {
 
       <ConfirmDialog
         open={deleting !== null}
-        title="Supprimer cette amende ?"
-        confirmLabel="Supprimer"
+        title={
+          deleting && !isStaff ? 'Annuler ton signalement ?' : 'Supprimer cette amende ?'
+        }
+        confirmLabel={deleting && !isStaff ? 'Annuler le signalement' : 'Supprimer'}
         danger
         pending={remove.isPending}
         onClose={() => setDeleting(null)}
@@ -156,7 +200,9 @@ export const FeedPage = () => {
               {deleting.label} · {deleting.amount} € · {formatAgo(deleting.createdAt)}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ pt: 1 }}>
-              Elle disparaîtra du fil et des totaux. Cette action est définitive.
+              {deleting.status === 'PENDING'
+                ? 'Le signalement disparaîtra du fil. Personne ne sera prévenu.'
+                : 'Elle disparaîtra du fil et des totaux. Cette action est définitive.'}
             </Typography>
           </Stack>
         )}

@@ -1,6 +1,6 @@
 import { Box, CircularProgress } from '@mui/material'
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
-import { useMe } from './api/hooks'
+import { useFineEntry, useMe } from './api/hooks'
 import { AppLayout } from './components/AppLayout'
 import { ClaimPage, LoginPage, SignupPage } from './pages/AuthPages'
 import { LeaderboardPage } from './pages/LeaderboardPage'
@@ -50,10 +50,11 @@ const RedirectIfAuthenticated = ({ children }: { children: React.ReactNode }) =>
  * simplement de lui laisser remplir trois étapes avant de se heurter au refus.
  */
 const RequireStaff = () => {
-  const { data: me } = useMe()
-  if (me && me.user.role !== 'ADMIN' && me.user.role !== 'MANAGER') {
-    return <Navigate to="/" replace />
-  }
+  const entry = useFineEntry()
+  // Tant que les réglages chargent, on ne renvoie personne : sinon un joueur
+  // autorisé serait éjecté le temps d une requête.
+  if (entry.loading) return <Outlet />
+  if (!entry.allowed) return <Navigate to="/" replace />
   return <Outlet />
 }
 

@@ -1,4 +1,4 @@
-import type { Fine, MemberSummary, Role } from '@blackbox/shared'
+import type { Fine, FineStatus, MemberSummary, Role } from '@blackbox/shared'
 
 /**
  * Fragments SQL partagés entre plusieurs routes.
@@ -16,7 +16,8 @@ import type { Fine, MemberSummary, Role } from '@blackbox/shared'
  * saisie à 23 h en été est datée du lendemain en UTC et bascule un jour trop tard.
  */
 export const IS_LATE_SQL = `
-  f.paid_at IS NULL
+  f.status = 'CONFIRMED'
+  AND f.paid_at IS NULL
   AND (f.created_at AT TIME ZONE 'Europe/Paris')::date + s.late_after_days
       <= (NOW() AT TIME ZONE 'Europe/Paris')::date
 `
@@ -37,8 +38,13 @@ export const MEMBER_SUMMARY_SQL = `
          m.display_name,
          m.user_id,
          u.role,
-         COALESCE(SUM(f.amount) FILTER (WHERE f.paid_at IS NULL), 0)::int      AS total_owed,
-         COALESCE(SUM(f.amount) FILTER (WHERE f.paid_at IS NOT NULL), 0)::int  AS total_paid,
+         -- Un signalement en attente ne compte NULLE PART tant qu'il n'est pas
+         -- validé : ni dans le dû, ni dans le payé, ni dans le retard. Sinon la
+         -- cagnotte afficherait de l'argent qu'un gestionnaire n'a pas entériné.
+         COALESCE(SUM(f.amount) FILTER (
+           WHERE f.status = 'CONFIRMED' AND f.paid_at IS NULL), 0)::int         AS total_owed,
+         COALESCE(SUM(f.amount) FILTER (
+           WHERE f.status = 'CONFIRMED' AND f.paid_at IS NOT NULL), 0)::int     AS total_paid,
          COALESCE(BOOL_OR(${IS_LATE_SQL}), FALSE)                              AS has_late
     FROM members m
     LEFT JOIN users u   ON u.id = m.user_id
@@ -67,6 +73,8 @@ export type FineRow = {
   created_at: Date
   paid_at: Date | null
   created_by_name: string | null
+  created_by: number | null
+  status: FineStatus
   is_late: boolean
 }
 
@@ -80,6 +88,8 @@ export const FINE_SQL = `
          f.created_at,
          f.paid_at,
          cb.display_name AS created_by_name,
+         f.created_by,
+         f.status,
          (${IS_LATE_SQL}) AS is_late
     FROM fines f
     JOIN members m       ON m.id = f.member_id
@@ -97,5 +107,7 @@ export const toFine = (r: FineRow): Fine => ({
   createdAt: r.created_at.toISOString(),
   paidAt: r.paid_at ? r.paid_at.toISOString() : null,
   createdByName: r.created_by_name,
+  createdById: r.created_by,
+  status: r.status,
   isLate: r.is_late,
 })

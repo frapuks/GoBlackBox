@@ -158,9 +158,10 @@ Changer `late_after_days` reclasse instantanément tout l'historique. C'est voul
 | Créer / archiver une règle ou une cotisation | ✅ | ✅ | ❌ |
 | Appliquer une cotisation / une pénalité | ✅ | ✅ | ❌ |
 | Créer / renommer un membre | ✅ | ✅ | ❌ |
+| Voir, copier et régénérer le code d invitation | ✅ | ✅ | ❌ |
 | Modifier `late_after_days` | ✅ | ❌ | ❌ |
 | Donner / retirer le rôle MANAGER | ✅ | ❌ | ❌ |
-| Régénérer le code d'invitation | ✅ | ❌ | ❌ |
+| Activer les signalements des joueurs | ✅ | ❌ | ❌ |
 
 ADMIN est **unique et non transférable** en V1.
 
@@ -220,7 +221,8 @@ PATCH  /fines/:id/paid        admin/manager
 PATCH  /me                    displayName, mot de passe
 GET    /settings              tous  → { lateAfterDays }
                               admin → + { inviteCode }
-PATCH  /settings              admin
+PATCH  /settings              admin — délai de retard, signalements
+POST   /settings/invite-code  admin/manager — renouvelle le code
 ```
 
 Le `inviteCode` ne doit **jamais** partir dans une réponse lue par un joueur.
@@ -405,3 +407,37 @@ un service `cron` à part) — c'est une brique nouvelle, pas une simple route.
 réglages. Un réglage par type d'événement est possible, mais alourdit le
 schéma et l'écran.
 
+
+---
+
+## 10. Signalements par les joueurs
+
+Activable par l'**admin seul**, désactivé par défaut : élargir qui peut créer
+des amendes est une décision, pas un comportement qu'on découvre après une
+mise à jour.
+
+Une amende porte désormais un état de **validation**, distinct de son état de
+paiement : `fines.status ∈ ('PENDING','CONFIRMED')`.
+
+| | Gestionnaire | Joueur |
+|---|---|---|
+| Crée une amende | directement `CONFIRMED` | `PENDING` si l'admin l'a autorisé |
+| Valide un signalement | ✅ | ❌ |
+| Supprime | ✅ toutes | ✅ son propre signalement, tant qu il est en attente |
+
+### Ce qu'implique l'état « en attente »
+
+- **Ne compte dans aucun total** — ni dû, ni payé, ni retard. La cagnotte
+  n'affiche jamais d'argent qu'un gestionnaire n'a pas entériné.
+- **Ne notifie personne.** Le joueur concerné est prévenu à la validation,
+  et seulement là.
+- **Visible de tous dans le fil**, remonté en tête : un signalement demande une
+  action, pas une consultation.
+- Ne peut pas être coché « payé » : le gestionnaire voit un bouton de
+  validation à la place de la case.
+
+`PATCH /fines/:id/confirm` est idempotent — le `WHERE status = 'PENDING'`
+garantit qu'une double validation ne déclenche qu'une notification.
+
+Désactiver le réglage n'efface rien : les signalements déjà déposés restent à
+valider, seule la création de nouveaux est bloquée.

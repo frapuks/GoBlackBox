@@ -8,7 +8,7 @@ import SportsHandballIcon from '@mui/icons-material/SportsHandball'
 import FitnessCenterIcon from '@mui/icons-material/FitnessCenter'
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
 import { RULE_CONTEXTS, RULE_CONTEXT_LABEL, type RuleContext } from '@blackbox/shared'
-import { useAddFine, useMembers, useRules } from '../api/hooks'
+import { useAddFine, useFineEntry, useMembers, useRules } from '../api/hooks'
 import { Card, Initials } from '../components/ui'
 import { FAB_OVERFLOW } from '../components/AppLayout'
 import { RuleCard } from '../components/RuleCard'
@@ -32,6 +32,7 @@ export const AddFinePage = () => {
   const members = useMembers()
   const rules = useRules()
   const addFine = useAddFine()
+  const entry = useFineEntry()
 
   const [selected, setSelected] = useState<number[]>([])
   const [context, setContext] = useState<RuleContext | null>(null)
@@ -79,7 +80,7 @@ export const AddFinePage = () => {
       {step === 1 && (
         <>
           <Typography variant="h2" sx={{ mb: 0.5 }}>
-            QUI EST LE FAUTIF ?
+            {entry.reporting ? 'QUI SIGNALES-TU ?' : 'QUI EST LE FAUTIF ?'}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Sélectionne un ou plusieurs joueurs.
@@ -174,12 +175,14 @@ export const AddFinePage = () => {
       {step === 3 && (
         <>
           <Typography variant="h2" sx={{ mb: 0.5 }}>
-            QUELLE RÈGLE APPLIQUER ?
+            {entry.reporting ? 'QUELLE RÈGLE ENFREINTE ?' : 'QUELLE RÈGLE APPLIQUER ?'}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {selected.length === 1
-              ? 'Le tarif sera appliqué à ' + selectedNames(all, selected) + '.'
-              : 'Le tarif sera appliqué aux ' + selected.length + ' joueurs sélectionnés.'}
+            {entry.reporting
+              ? 'Ton signalement devra être validé par un gestionnaire avant de compter.'
+              : selected.length === 1
+                ? 'Le tarif sera appliqué à ' + selectedNames(all, selected) + '.'
+                : 'Le tarif sera appliqué aux ' + selected.length + ' joueurs sélectionnés.'}
           </Typography>
 
           <Stack spacing={1}>

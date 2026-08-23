@@ -26,6 +26,7 @@ import {
   useLogout,
   useMe,
   useMembers,
+  useRegenerateInviteCode,
   useSettings,
   useUpdateMe,
   useUpdateRole,
@@ -55,6 +56,7 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
 export const SettingsPage = () => {
   const me = useMe()
   const isAdmin = me.data?.user.role === 'ADMIN'
+  const isStaff = isAdmin || me.data?.user.role === 'MANAGER'
 
   return (
     <>
@@ -69,7 +71,7 @@ export const SettingsPage = () => {
       <NotificationsSection />
       <PasswordSection />
 
-      {isAdmin && (
+      {isStaff && (
         <>
           <Divider sx={{ my: 3 }}>
             <Typography variant="overline" color="text.secondary">
@@ -77,8 +79,12 @@ export const SettingsPage = () => {
             </Typography>
           </Divider>
 
+          {/* Un gestionnaire administre le quotidien : code d'invitation,
+              participants. Restent à l'admin seul les deux décisions qui
+              engagent l'équipe — les rôles et l'ouverture des signalements. */}
+          <PlayerReportsSection canEdit={isAdmin} />
           <InviteCodeSection />
-          <MembersSection />
+          <MembersSection canManageRoles={isAdmin} />
         </>
       )}
 
@@ -161,11 +167,6 @@ const NotificationsSection = () => {
 
       {push.error && <Alert severity="error">{push.error}</Alert>}
 
-      {!push.blocker && push.subscribed && (
-        <Typography variant="caption" color="text.secondary">
-          Réglage propre à cet appareil.
-        </Typography>
-      )}
     </Section>
   )
 }
@@ -242,6 +243,39 @@ const PasswordSection = () => {
 }
 
 /**
+ * Ouvre la saisie aux joueurs, sous forme de signalements à valider.
+ * Désactivé par défaut : élargir qui peut créer des amendes est une décision.
+ */
+const PlayerReportsSection = ({ canEdit }: { canEdit: boolean }) => {
+  const settings = useSettings()
+  const updateSettings = useUpdateSettings()
+
+  return (
+    <Section title="Signalements">
+      <FormControlLabel
+        sx={{ ml: 0, justifyContent: 'space-between' }}
+        labelPlacement="start"
+        control={
+          <Switch
+            checked={settings.data?.allowPlayerReports ?? false}
+            disabled={!canEdit || settings.isPending || updateSettings.isPending}
+            onChange={(e) => updateSettings.mutate({ allowPlayerReports: e.target.checked })}
+          />
+        }
+        label={<Typography variant="body2">Les joueurs peuvent signaler une amende</Typography>}
+      />
+
+      {/* Un interrupteur grisé sans explication laisse croire à une panne. */}
+      {!canEdit && (
+        <Typography variant="caption" color="text.secondary">
+          Modifiable par l&apos;administrateur.
+        </Typography>
+      )}
+    </Section>
+  )
+}
+
+/**
  * Message d'invitation prêt à coller dans une conversation d'équipe.
  *
  * L'URL vient de `window.location.origin` : elle suit donc le domaine réel,
@@ -287,7 +321,7 @@ const copyToClipboard = async (text: string) => {
 
 const InviteCodeSection = () => {
   const settings = useSettings()
-  const updateSettings = useUpdateSettings()
+  const regenerate = useRegenerateInviteCode()
   const [confirming, setConfirming] = useState(false)
   const [copied, setCopied] = useState(false)
   const [copyFailed, setCopyFailed] = useState(false)
@@ -345,14 +379,9 @@ const InviteCodeSection = () => {
         title="Régénérer le code ?"
         confirmLabel="Régénérer"
         danger
-        pending={updateSettings.isPending}
+        pending={regenerate.isPending}
         onClose={() => setConfirming(false)}
-        onConfirm={() =>
-          updateSettings.mutate(
-            { regenerateInviteCode: true },
-            { onSuccess: () => setConfirming(false) },
-          )
-        }
+        onConfirm={() => regenerate.mutate(undefined, { onSuccess: () => setConfirming(false) })}
       >
         <Typography variant="body2" color="text.secondary">
           L&apos;ancien code cessera immédiatement de fonctionner : les joueurs à qui tu l&apos;as
@@ -403,7 +432,7 @@ const AddParticipantDialog = ({ open, onClose }: { open: boolean; onClose: () =>
   )
 }
 
-const MembersSection = () => {
+const MembersSection = ({ canManageRoles }: { canManageRoles: boolean }) => {
   const me = useMe()
   const members = useMembers()
   const updateRole = useUpdateRole()
@@ -435,7 +464,8 @@ const MembersSection = () => {
           const isSelf = m.userId === me.data?.user.id
           // Un rôle est porté par un COMPTE : un participant fantôme n'en a pas,
           // et le rôle ADMIN n'est ni transférable ni révocable en V1.
-          const canToggle = m.userId !== null && m.role !== 'ADMIN' && !isSelf
+          // Un gestionnaire voit les rôles mais ne les change pas.
+          const canToggle = canManageRoles && m.userId !== null && m.role !== 'ADMIN' && !isSelf
 
           return (
             <Card key={m.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>

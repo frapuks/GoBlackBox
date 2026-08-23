@@ -6,7 +6,7 @@ import RssFeedIcon from '@mui/icons-material/RssFeed'
 import GavelIcon from '@mui/icons-material/Gavel'
 import PersonIcon from '@mui/icons-material/Person'
 import { Box, Container, Fab } from '@mui/material'
-import { useMe } from '../api/hooks'
+import { useFineEntry } from '../api/hooks'
 import { pageSpacing, palette } from '../theme'
 
 /** Débordement du bouton central au-dessus de la barre, en pixels. */
@@ -58,9 +58,9 @@ const NavItem = ({
  */
 export const AppLayout = () => {
   const { pathname } = useLocation()
-  const me = useMe()
+  const entry = useFineEntry()
 
-  const isStaff = me.data?.user.role === 'ADMIN' || me.data?.user.role === 'MANAGER'
+
   // Sur l'écran d'ajout, le bouton change d'action mais reste en place : le
   // retirer redistribuerait les quatre onglets et ferait sauter toutes les icônes.
   const adding = pathname === '/fines/new'
@@ -101,7 +101,7 @@ export const AppLayout = () => {
 
         {/* Bouton d'action central, réservé aux gestionnaires. Absent pour un
             joueur, les quatre onglets se répartissent toute la largeur. */}
-        {isStaff && (
+        {entry.allowed && (
           <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
             <Fab
               color="primary"

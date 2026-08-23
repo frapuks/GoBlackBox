@@ -170,6 +170,17 @@ export const createFineInput = z.object({
 
 export const setPaidInput = z.object({ paid: z.boolean() })
 
+/**
+ * État de VALIDATION d'une amende, distinct de son état de paiement.
+ *
+ * PENDING   : signalée par un joueur, en attente d'un gestionnaire. Ne compte
+ *             dans aucun total et ne déclenche aucune notification.
+ * CONFIRMED : saisie par un gestionnaire, ou signalement validé.
+ */
+export const FINE_STATUSES = ['PENDING', 'CONFIRMED'] as const
+export const fineStatusSchema = z.enum(FINE_STATUSES)
+export type FineStatus = z.infer<typeof fineStatusSchema>
+
 export type Fine = {
   id: number
   memberId: number
@@ -181,19 +192,29 @@ export type Fine = {
   createdAt: string
   paidAt: string | null
   createdByName: string | null
+  /** Auteur de la saisie : permet à un joueur d'annuler son propre signalement. */
+  createdById: number | null
+  status: FineStatus
   /** Calculé côté serveur à partir de settings.lateAfterDays. */
   isLate: boolean
 }
 
 // ---------------------------------------------------------------- réglages
 
+/**
+ * Réglages de la caisse, réservés à l'admin.
+ * Le renouvellement du code a sa propre route : il est ouvert aux
+ * gestionnaires, contrairement à ces deux réglages.
+ */
 export const updateSettingsInput = z.object({
   lateAfterDays: z.number().int().min(1).max(365).optional(),
-  regenerateInviteCode: z.boolean().optional(),
+  allowPlayerReports: z.boolean().optional(),
 })
 
 export type Settings = {
   lateAfterDays: number
+  /** Les joueurs peuvent-ils signaler une amende, à valider par un gestionnaire ? */
+  allowPlayerReports: boolean
   /** Présent uniquement pour l'ADMIN : ne doit jamais fuiter vers un joueur. */
   inviteCode?: string
 }

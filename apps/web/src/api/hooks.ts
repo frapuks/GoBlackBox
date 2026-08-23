@@ -142,6 +142,33 @@ export const useSetFinePaid = () =>
 export const useDeleteFine = () =>
   useDataMutation((id: number) => apiFetch<void>(`/fines/${id}`, { method: 'DELETE' }))
 
+/** Validation d'un signalement : c'est ce geste qui notifie le joueur. */
+export const useConfirmFine = () =>
+  useDataMutation((id: number) => apiFetch<Fine>(`/fines/${id}/confirm`, { method: 'PATCH' }))
+
+/**
+ * Qui peut ouvrir l'écran d'ajout d'amende, et sous quelle forme.
+ *
+ * Un gestionnaire saisit directement. Un joueur ne peut que signaler, et
+ * seulement si l'admin a ouvert cette possibilité.
+ */
+export const useFineEntry = () => {
+  const me = useMe()
+  const settings = useSettings()
+
+  const isStaff = me.data?.user.role === 'ADMIN' || me.data?.user.role === 'MANAGER'
+  const canReport = settings.data?.allowPlayerReports === true
+
+  return {
+    isStaff,
+    /** Le joueur signale au lieu de saisir : l'amende restera à valider. */
+    reporting: !isStaff && canReport,
+    allowed: isStaff || canReport,
+    /** `undefined` tant que les réglages ne sont pas chargés : on ne tranche pas. */
+    loading: settings.isPending || me.isPending,
+  }
+}
+
 export const useCreateRule = () =>
   useDataMutation(
     (v: {
@@ -189,9 +216,17 @@ export const useUpdateRole = () =>
   )
 
 export const useUpdateSettings = () =>
-  useDataMutation((v: { lateAfterDays?: number; regenerateInviteCode?: boolean }) =>
+  useDataMutation(
+    (v: {
+      lateAfterDays?: number
+      allowPlayerReports?: boolean
+    }) =>
     patch<Settings>('/settings', v),
   )
+
+/** Renouvellement du code : action de distribution, ouverte aux gestionnaires. */
+export const useRegenerateInviteCode = () =>
+  useDataMutation(() => apiFetch<Settings>('/settings/invite-code', { method: 'POST' }))
 
 export const useUpdateMe = () => {
   const qc = useQueryClient()

@@ -29,17 +29,38 @@ export const fineRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+    // Les signalements en attente remontent en tête : ils demandent une action,
+    // pas une consultation. Le reste du fil garde son ordre chronologique.
     const rows = await query<FineRow>(
-      `${FINE_SQL} ${where} ORDER BY f.created_at DESC LIMIT 500`,
+      `${FINE_SQL} ${where}
+        ORDER BY (f.status = 'PENDING') DESC, f.created_at DESC
+        LIMIT 500`,
       params,
     )
     return rows.map(toFine)
   })
 
-  /** Une règle, un ou plusieurs joueurs, une seule transaction. */
-  app.post('/fines', staff, async (req, reply): Promise<Fine[]> => {
+  /**
+   * Une règle, un ou plusieurs joueurs, une seule transaction.
+   *
+   * Un gestionnaire crée des amendes confirmées. Un joueur ne peut que
+   * SIGNALER, et seulement si l'admin l'a autorisé : son amende reste en
+   * attente et ne notifie personne tant qu'elle n'est pas validée.
+   */
+  app.post('/fines', auth, async (req, reply): Promise<Fine[]> => {
     const body = createFineInput.parse(req.body)
     const authorMemberId = req.currentUser.memberId!
+
+    const isStaff = req.currentUser.role === 'ADMIN' || req.currentUser.role === 'MANAGER'
+    if (!isStaff) {
+      const settings = await queryOne<{ allow_player_reports: boolean }>(
+        'SELECT allow_player_reports FROM settings WHERE id = 1',
+      )
+      if (!settings?.allow_player_reports) {
+        throw app.httpErrors.forbidden('Les signalements sont désactivés')
+      }
+    }
+    const status = isStaff ? 'CONFIRMED' : 'PENDING'
     // Deux fois le même joueur dans la sélection ne doit pas donner deux amendes.
     const memberIds = [...new Set(body.memberIds)]
 
@@ -81,20 +102,44 @@ export const fineRoutes: FastifyPluginAsync = async (app) => {
 
       // UNNEST : une seule requête quel que soit le nombre de joueurs.
       const { rows } = await client.query<{ id: number }>(
-        `INSERT INTO fines (member_id, rule_id, amount, label, created_by)
-         SELECT m, $2, $3, $4, $5 FROM UNNEST($1::int[]) AS m
+        `INSERT INTO fines (member_id, rule_id, amount, label, created_by, status)
+         SELECT m, $2, $3, $4, $5, $6 FROM UNNEST($1::int[]) AS m
          RETURNING id`,
-        [memberIds, body.ruleId, amount, label, authorMemberId],
+        [memberIds, body.ruleId, amount, label, authorMemberId, status],
       )
       return rows.map((r) => r.id)
     })
 
-    // Sans `await` : une notification lente ou en échec ne doit pas retarder
-    // la réponse, ni faire échouer une amende pourtant bien enregistrée.
-    void notifyNewFines(ids).catch((err) => req.log.error({ err }, 'notification échouée'))
+    // Un signalement ne notifie personne : le joueur concerné n'est prévenu
+    // qu'à la validation. Sans `await` par ailleurs — une notification lente
+    // ne doit pas retarder la réponse ni faire échouer l'enregistrement.
+    if (status === 'CONFIRMED') {
+      void notifyNewFines(ids).catch((err) => req.log.error({ err }, 'notification échouée'))
+    }
 
     reply.code(201)
     return Promise.all(ids.map(loadFine))
+  })
+
+  /**
+   * Validation d'un signalement. C'est ici, et seulement ici, que le joueur
+   * concerné est prévenu.
+   */
+  app.patch('/fines/:id/confirm', staff, async (req): Promise<Fine> => {
+    const id = parseId(req.params)
+
+    // Le WHERE sur le statut rend l'opération idempotente : deux gestionnaires
+    // qui valident en même temps ne déclenchent qu'une notification.
+    const updated = await queryOne<{ id: number }>(
+      `UPDATE fines SET status = 'CONFIRMED' WHERE id = $1 AND status = 'PENDING' RETURNING id`,
+      [id],
+    )
+
+    if (updated) {
+      void notifyNewFines([id]).catch((err) => req.log.error({ err }, 'notification échouée'))
+    }
+
+    return loadFine(id)
   })
 
   /**
@@ -117,14 +162,33 @@ export const fineRoutes: FastifyPluginAsync = async (app) => {
     return loadFine(id)
   })
 
-  /** Correction d'une saisie erronée : le gestionnaire doit pouvoir se rattraper. */
-  app.delete('/fines/:id', staff, async (req, reply) => {
+  /**
+   * Correction d'une saisie erronée.
+   *
+   * Un gestionnaire supprime n'importe quelle amende. Un joueur ne peut retirer
+   * que SON propre signalement, et seulement tant qu'il est en attente : une
+   * fois validé, il ne lui appartient plus.
+   */
+  app.delete('/fines/:id', auth, async (req, reply) => {
     const id = parseId(req.params)
+    const isStaff = req.currentUser.role === 'ADMIN' || req.currentUser.role === 'MANAGER'
+
+    // Les conditions sont dans le WHERE plutôt que dans un test préalable :
+    // pas de fenêtre entre la vérification et la suppression.
     const deleted = await queryOne<{ id: number }>(
-      'DELETE FROM fines WHERE id = $1 RETURNING id',
-      [id],
+      `DELETE FROM fines
+        WHERE id = $1
+          AND ($2::boolean OR (status = 'PENDING' AND created_by = $3))
+        RETURNING id`,
+      [id, isStaff, req.currentUser.memberId],
     )
-    if (!deleted) throw app.httpErrors.notFound('Amende introuvable')
+
+    if (!deleted) {
+      // On ne distingue pas « inexistante » de « pas à toi » : inutile de
+      // renseigner sur ce qui existe.
+      throw app.httpErrors.notFound('Amende introuvable')
+    }
+
     reply.code(204)
   })
 
