@@ -11,6 +11,18 @@ const queryClient = new QueryClient({
   },
 })
 
+// Enregistré au démarrage, mais il ne fait RIEN tant que l'utilisateur n'a pas
+// activé les notifications : ce service worker n'a pas de gestionnaire `fetch`,
+// donc il n'intercepte ni ne met en cache quoi que ce soit.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // Contexte non sécurisé ou navigateur récalcitrant : l'app fonctionne
+      // sans, seules les notifications seront indisponibles.
+    })
+  })
+}
+
 const root = document.getElementById('root')
 if (!root) throw new Error('#root introuvable')
 

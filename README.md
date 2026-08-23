@@ -234,3 +234,43 @@ docker buildx build --platform linux/arm/v7 -f apps/web/Dockerfile -t blackbox-w
 - [x] **8.** Dockerfiles de prod et déploiement Pi
 
 V1 complète. Les évolutions repoussées sont listées dans [SPEC.md](SPEC.md) §8.
+
+## Notifications push
+
+Un joueur est prévenu **quand il reçoit une amende** — saisie individuelle,
+cotisation ou pénalité appliquée en masse. Rien d'autre n'est notifié.
+
+Chacun active ou coupe les notifications depuis Réglages, **par appareil** :
+l'interrupteur reflète l'abonnement réel du navigateur, et le couper supprime
+l'abonnement côté serveur.
+
+### Mettre en service
+
+Générer une paire de clés VAPID, une fois par installation :
+
+```bash
+docker compose exec api node -e "const w=require('web-push');const k=w.generateVAPIDKeys();console.log('VAPID_PUBLIC_KEY='+k.publicKey);console.log('VAPID_PRIVATE_KEY='+k.privateKey)"
+```
+
+Les reporter dans `.env` avec `VAPID_SUBJECT=mailto:ton-email`, puis
+`docker compose up -d api`.
+
+⚠ **Changer ces clés invalide tous les abonnements existants** : chaque joueur
+devrait réactiver l'interrupteur. Sauvegarde-les avec le reste du `.env`.
+
+Sans clés, tout est désactivé proprement : l'app fonctionne et la section
+Notifications n'apparaît pas dans les réglages.
+
+### Ce qu'il faut savoir
+
+- **iPhone : uniquement si l'app est installée sur l'écran d'accueil**, et à
+  partir d'iOS 16.4. Dans un onglet Safari, aucune notification n'arrivera,
+  sans message d'erreur. L'interrupteur explique la marche à suivre.
+- **Android** : fonctionne aussi dans un onglet Chrome.
+- Le service worker (`apps/web/public/sw.js`) **ne met rien en cache** et n'a
+  pas de gestionnaire `fetch` : pas de risque de servir une version périmée
+  après un déploiement. Il ne sert qu'aux notifications.
+- Un abonnement dont l'endpoint répond 404 ou 410 est supprimé automatiquement
+  au premier envoi : c'est le seul signal qu'un appareil a désinstallé l'app.
+- L'envoi ne bloque jamais la réponse : une notification en échec n'empêche
+  pas l'amende d'être enregistrée.

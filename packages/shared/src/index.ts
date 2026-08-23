@@ -212,3 +212,20 @@ export type Dashboard = {
   totalPaid: number
   members: MemberSummary[]
 }
+
+// ---------------------------------------------------------------- push
+
+/**
+ * Abonnement d'un appareil aux notifications, tel que le navigateur le produit.
+ * L'endpoint identifie l'appareil ; les clés servent à chiffrer le message.
+ */
+export const pushSubscriptionInput = z.object({
+  endpoint: z.string().url().max(1000),
+  keys: z.object({
+    p256dh: z.string().min(1).max(300),
+    auth: z.string().min(1).max(300),
+  }),
+})
+
+/** `enabled: false` = serveur sans clés VAPID, le front masque l'interrupteur. */
+export type PushConfig = { enabled: boolean; publicKey: string | null }

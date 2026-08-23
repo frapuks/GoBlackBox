@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { createFineInput, setPaidInput, type Fine } from '@blackbox/shared'
 import { query, queryOne, transaction } from '../db.js'
 import { FINE_SQL, toFine, type FineRow } from '../queries.js'
+import { notifyNewFines } from '../push.js'
 
 export const fineRoutes: FastifyPluginAsync = async (app) => {
   const auth = { preHandler: [app.requireAuth, app.requireMember] }
@@ -87,6 +88,10 @@ export const fineRoutes: FastifyPluginAsync = async (app) => {
       )
       return rows.map((r) => r.id)
     })
+
+    // Sans `await` : une notification lente ou en échec ne doit pas retarder
+    // la réponse, ni faire échouer une amende pourtant bien enregistrée.
+    void notifyNewFines(ids).catch((err) => req.log.error({ err }, 'notification échouée'))
 
     reply.code(201)
     return Promise.all(ids.map(loadFine))

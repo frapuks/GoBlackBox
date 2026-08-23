@@ -9,6 +9,7 @@ import { memberRoutes } from './routes/members.js'
 import { ruleRoutes } from './routes/rules.js'
 import { fineRoutes } from './routes/fines.js'
 import { settingsRoutes } from './routes/settings.js'
+import { pushRoutes } from './routes/push.js'
 
 const isProduction = process.env.NODE_ENV === 'production'
 
@@ -71,6 +72,7 @@ await app.register(
     await api.register(ruleRoutes)
     await api.register(fineRoutes)
     await api.register(settingsRoutes)
+    await api.register(pushRoutes)
   },
   { prefix: '/api' },
 )

@@ -9,8 +9,10 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  FormControlLabel,
   IconButton,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material'
@@ -29,6 +31,7 @@ import {
   useUpdateRole,
   useUpdateSettings,
 } from '../api/hooks'
+import { usePush } from '../api/push'
 import { Card, Initials, SectionTitle } from '../components/ui'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { palette } from '../theme'
@@ -63,6 +66,7 @@ export const SettingsPage = () => {
       </Stack>
 
       <ProfileSection />
+      <NotificationsSection />
       <PasswordSection />
 
       {isAdmin && (
@@ -107,6 +111,61 @@ const ProfileSection = () => {
         Enregistrer
       </Button>
       {updateMe.error && <Alert severity="error">{updateMe.error.message}</Alert>}
+    </Section>
+  )
+}
+
+/**
+ * Notifications push, réglées par appareil.
+ *
+ * L'interrupteur reflète l'abonnement réel du navigateur, pas une préférence
+ * stockée : couper supprime l'abonnement, donc plus rien ne peut être envoyé.
+ */
+const NotificationsSection = () => {
+  const push = usePush()
+
+  // Pas de clés VAPID côté serveur : rien à proposer, on masque la section
+  // plutôt que d'afficher un réglage inopérant.
+  if (!push.available) return null
+
+  const message: Record<string, string> = {
+    'ios-not-installed':
+      "Sur iPhone, les notifications n'existent que si l'app est installée sur l'écran d'accueil : bouton Partager dans Safari, puis « Sur l'écran d'accueil ».",
+    denied:
+      'Les notifications ont été refusées pour ce site. Réautorise-les dans les réglages de ton navigateur.',
+    unsupported: "Ce navigateur ne gère pas les notifications.",
+  }
+
+  return (
+    <Section title="Notifications">
+      <FormControlLabel
+        sx={{ ml: 0, justifyContent: 'space-between' }}
+        labelPlacement="start"
+        control={
+          <Switch
+            checked={push.subscribed}
+            disabled={push.blocker !== null || push.busy}
+            onChange={(e) => (e.target.checked ? push.subscribe() : push.unsubscribe())}
+          />
+        }
+        label={
+          <Typography variant="body2">Me prévenir quand je reçois une amende</Typography>
+        }
+      />
+
+      {push.blocker && (
+        <Typography variant="caption" color="text.secondary">
+          {message[push.blocker]}
+        </Typography>
+      )}
+
+      {push.error && <Alert severity="error">{push.error}</Alert>}
+
+      {!push.blocker && push.subscribed && (
+        <Typography variant="caption" color="text.secondary">
+          Réglage propre à cet appareil.
+        </Typography>
+      )}
     </Section>
   )
 }

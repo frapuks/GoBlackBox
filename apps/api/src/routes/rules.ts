@@ -10,6 +10,7 @@ import {
 } from '@blackbox/shared'
 import { query, queryOne, transaction } from '../db.js'
 import { IS_LATE_SQL } from '../queries.js'
+import { notifyNewFines } from '../push.js'
 
 type RuleRow = {
   id: number
@@ -195,14 +196,19 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
              )`
           : ''
 
-      const { rowCount } = await client.query(
+      // RETURNING : on récupère les identifiants pour notifier les joueurs
+      // concernés, exactement comme lors d'une saisie individuelle.
+      const { rows } = await client.query<{ id: number }>(
         `INSERT INTO fines (member_id, rule_id, amount, label, created_by)
-         SELECT m.id, $1, $2, $3, $4 FROM members m ${targetFilter}`,
+         SELECT m.id, $1, $2, $3, $4 FROM members m ${targetFilter}
+         RETURNING id`,
         [id, rule.amount, rule.label, authorMemberId],
       )
-      return rowCount ?? 0
+      return rows.map((r) => r.id)
     })
 
-    return { created }
+    void notifyNewFines(created).catch((err) => req.log.error({ err }, 'notification échouée'))
+
+    return { created: created.length }
   })
 }

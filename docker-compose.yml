@@ -48,6 +48,11 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       # Le runner de migrations y dépose un pg_dump avant toute migration.
       BACKUP_DIR: /backups
+      # Notifications push. Vides = fonctionnalité désactivée proprement,
+      # l'interrupteur n'apparaît alors pas dans les réglages.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@blackbox.local}
     volumes:
       # Bind-mount plutôt qu'un volume nommé : les sauvegardes doivent être
       # récupérables sans passer par Docker.
