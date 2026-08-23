@@ -157,9 +157,11 @@ Changer `late_after_days` reclasse instantanément tout l'historique. C'est voul
 | Supprimer une amende | ✅ | ✅ | ❌ |
 | Créer / archiver une règle ou une cotisation | ✅ | ✅ | ❌ |
 | Appliquer une cotisation / une pénalité | ✅ | ✅ | ❌ |
-| Créer / renommer un membre | ✅ | ✅ | ❌ |
-| Voir, copier et régénérer le code d invitation | ✅ | ✅ | ❌ |
-| Modifier `late_after_days` | ✅ | ❌ | ❌ |
+| Renommer un membre | ✅ | ✅ | ❌ |
+| Modifier `late_after_days` | ✅ | ✅ | ❌ |
+| Voir et copier le code d invitation | ✅ | ✅ | ❌ |
+| **Ajouter** un participant | ✅ | ❌ | ❌ |
+| **Régénérer** le code d invitation | ✅ | ❌ | ❌ |
 | Donner / retirer le rôle MANAGER | ✅ | ❌ | ❌ |
 | Activer les signalements des joueurs | ✅ | ❌ | ❌ |
 
@@ -221,8 +223,9 @@ PATCH  /fines/:id/paid        admin/manager
 PATCH  /me                    displayName, mot de passe
 GET    /settings              tous  → { lateAfterDays }
                               admin → + { inviteCode }
-PATCH  /settings              admin — délai de retard, signalements
-POST   /settings/invite-code  admin/manager — renouvelle le code
+PATCH  /settings              admin/manager pour lateAfterDays
+                              admin SEUL pour allowPlayerReports
+POST   /settings/invite-code  admin — renouvelle le code
 ```
 
 Le `inviteCode` ne doit **jamais** partir dans une réponse lue par un joueur.

@@ -83,8 +83,8 @@ export const SettingsPage = () => {
               participants. Restent à l'admin seul les deux décisions qui
               engagent l'équipe — les rôles et l'ouverture des signalements. */}
           <PlayerReportsSection canEdit={isAdmin} />
-          <InviteCodeSection />
-          <MembersSection canManageRoles={isAdmin} />
+          <InviteCodeSection canRegenerate={isAdmin} />
+          <MembersSection canManage={isAdmin} />
         </>
       )}
 
@@ -319,7 +319,7 @@ const copyToClipboard = async (text: string) => {
   }
 }
 
-const InviteCodeSection = () => {
+const InviteCodeSection = ({ canRegenerate }: { canRegenerate: boolean }) => {
   const settings = useSettings()
   const regenerate = useRegenerateInviteCode()
   const [confirming, setConfirming] = useState(false)
@@ -359,9 +359,11 @@ const InviteCodeSection = () => {
         >
           {copied ? <CheckIcon /> : <ContentCopyIcon />}
         </IconButton>
-        <IconButton aria-label="Régénérer" onClick={() => setConfirming(true)}>
-          <RefreshIcon />
-        </IconButton>
+        {canRegenerate && (
+          <IconButton aria-label="Régénérer" onClick={() => setConfirming(true)}>
+            <RefreshIcon />
+          </IconButton>
+        )}
       </Stack>
 
       {copyFailed && (
@@ -432,7 +434,7 @@ const AddParticipantDialog = ({ open, onClose }: { open: boolean; onClose: () =>
   )
 }
 
-const MembersSection = ({ canManageRoles }: { canManageRoles: boolean }) => {
+const MembersSection = ({ canManage }: { canManage: boolean }) => {
   const me = useMe()
   const members = useMembers()
   const updateRole = useUpdateRole()
@@ -447,14 +449,16 @@ const MembersSection = ({ canManageRoles }: { canManageRoles: boolean }) => {
         sx={{ mb: 1.5, minHeight: 40 }}
       >
         <SectionTitle sx={{ mb: 0 }}>Membres</SectionTitle>
-        <IconButton
-          size="small"
-          color="primary"
-          aria-label="Ajouter un participant"
-          onClick={() => setAdding(true)}
-        >
-          <AddIcon />
-        </IconButton>
+        {canManage && (
+          <IconButton
+            size="small"
+            color="primary"
+            aria-label="Ajouter un participant"
+            onClick={() => setAdding(true)}
+          >
+            <AddIcon />
+          </IconButton>
+        )}
       </Stack>
 
       <AddParticipantDialog open={adding} onClose={() => setAdding(false)} />
@@ -465,7 +469,7 @@ const MembersSection = ({ canManageRoles }: { canManageRoles: boolean }) => {
           // Un rôle est porté par un COMPTE : un participant fantôme n'en a pas,
           // et le rôle ADMIN n'est ni transférable ni révocable en V1.
           // Un gestionnaire voit les rôles mais ne les change pas.
-          const canToggle = canManageRoles && m.userId !== null && m.role !== 'ADMIN' && !isSelf
+          const canToggle = canManage && m.userId !== null && m.role !== 'ADMIN' && !isSelf
 
           return (
             <Card key={m.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>

@@ -51,7 +51,9 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
     return rows.map(toMemberSummary)
   })
 
-  app.post('/members', staff, async (req, reply): Promise<MemberSummary> => {
+  // Ajouter un participant change la composition de l'équipe : administration,
+  // au même titre que les rôles.
+  app.post('/members', adminOnly, async (req, reply): Promise<MemberSummary> => {
     const body = createMemberInput.parse(req.body)
 
     const created = await queryOne<{ id: number }>(

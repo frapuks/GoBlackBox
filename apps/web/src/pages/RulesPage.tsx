@@ -56,7 +56,6 @@ export const RulesPage = () => {
   const settings = useSettings()
 
   const isStaff = me.data?.user.role === 'ADMIN' || me.data?.user.role === 'MANAGER'
-  const isAdmin = me.data?.user.role === 'ADMIN'
 
   const dues = rules.data?.filter((r) => r.kind === 'DUES') ?? []
   const penalties = rules.data?.filter((r) => r.kind === 'PENALTY') ?? []
@@ -72,7 +71,9 @@ export const RulesPage = () => {
         first
       />
 
-      <LateDelayCard lateAfterDays={settings.data?.lateAfterDays} editable={isAdmin} />
+      {/* Le délai de retard relève du quotidien de l'équipe, pas du paramétrage
+          de l'app : un gestionnaire l'ajuste comme il ajuste les règles. */}
+      <LateDelayCard lateAfterDays={settings.data?.lateAfterDays} editable={isStaff} />
 
       <Stack spacing={1}>
         {penalties.map((r) => (

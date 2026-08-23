@@ -39,9 +39,21 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     return isStaff ? { ...base, inviteCode: row!.invite_code } : base
   })
 
-  /** Délai de retard et signalements : deux décisions réservées à l'admin. */
-  app.patch('/settings', adminOnly, async (req): Promise<Settings> => {
+  /**
+   * Deux champs de sensibilité différente sur la même route :
+   *  - `lateAfterDays` relève du quotidien, un gestionnaire l'ajuste ;
+   *  - `allowPlayerReports` ouvre une fonctionnalité à toute l'équipe, c'est
+   *    une décision d'administrateur.
+   *
+   * D'où un contrôle par CHAMP plutôt qu'un `preHandler` : le second serait
+   * soit trop permissif, soit trop restrictif.
+   */
+  app.patch('/settings', staff, async (req): Promise<Settings> => {
     const body = updateSettingsInput.parse(req.body)
+
+    if (body.allowPlayerReports !== undefined && req.currentUser.role !== 'ADMIN') {
+      throw app.httpErrors.forbidden("Les signalements relèvent de l'administrateur")
+    }
 
     const row = await queryOne<SettingsRow>(
       `UPDATE settings
@@ -62,10 +74,11 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
   })
 
   /**
-   * Renouvellement du code, sur sa propre route : c'est une action de
-   * distribution, ouverte aux gestionnaires, et non un réglage de la caisse.
+   * Renouveler le code invalide les invitations déjà distribuées : c'est de
+   * l'administration, pas du quotidien. Un gestionnaire le lit et le partage,
+   * mais ne le remplace pas.
    */
-  app.post('/settings/invite-code', staff, async (): Promise<Settings> => {
+  app.post('/settings/invite-code', adminOnly, async (): Promise<Settings> => {
     const row = await queryOne<SettingsRow>(
       `UPDATE settings SET invite_code = $1 WHERE id = 1
         RETURNING late_after_days, allow_player_reports, invite_code`,
