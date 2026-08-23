@@ -14,11 +14,16 @@ import {
   Stack,
   Switch,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import AddIcon from '@mui/icons-material/Add'
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
+import LinkOffIcon from '@mui/icons-material/LinkOff'
+import type { MemberSummary } from '@blackbox/shared'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CheckIcon from '@mui/icons-material/Check'
 import {
@@ -29,7 +34,9 @@ import {
   useRegenerateInviteCode,
   useSettings,
   useUpdateMe,
+  useUnlinkMember,
   useUpdateFeatures,
+  useUpdateMember,
   useUpdateRole,
   useUpdateSettings,
 } from '../api/hooks'
@@ -454,11 +461,145 @@ const AddParticipantDialog = ({ open, onClose }: { open: boolean; onClose: () =>
   )
 }
 
-const MembersSection = ({ canManage }: { canManage: boolean }) => {
+/**
+ * Modification d'un participant : nom, rôle, et détachement du compte.
+ *
+ * Le formulaire est entièrement local — rien ne part tant qu'on n'a pas
+ * enregistré, et « Annuler » n'a donc aucune conséquence. À la validation,
+ * seuls les champs réellement modifiés donnent lieu à une requête.
+ *
+ * Le détachement fait exception : c'est une action, pas un champ. Elle a sa
+ * propre confirmation et s'applique immédiatement.
+ */
+const MemberDialog = ({
+  member,
+  onClose,
+}: {
+  member: MemberSummary | null
+  onClose: () => void
+}) => {
   const me = useMe()
-  const members = useMembers()
+  const updateMember = useUpdateMember()
   const updateRole = useUpdateRole()
+  const unlink = useUnlinkMember()
+  const [name, setName] = useState('')
+  const [role, setRole] = useState<'PLAYER' | 'MANAGER'>('PLAYER')
+  const [unlinking, setUnlinking] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!member) return
+    setName(member.displayName)
+    setRole(member.role === 'MANAGER' ? 'MANAGER' : 'PLAYER')
+  }, [member])
+
+  if (!member) return null
+
+  const isSelf = member.userId === me.data?.user.id
+  const linked = member.userId !== null
+  // Le rôle ADMIN n'est ni transférable ni révocable, et on ne modifie pas
+  // le sien : sans ça, on peut se retrouver sans administrateur.
+  const canChangeRole = linked && member.role !== 'ADMIN' && !isSelf
+
+  const nameChanged = name.trim() !== member.displayName
+  const roleChanged = canChangeRole && role !== member.role
+  const dirty = nameChanged || roleChanged
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      if (nameChanged) await updateMember.mutateAsync({ id: member.id, displayName: name.trim() })
+      if (roleChanged) await updateRole.mutateAsync({ userId: member.userId!, role })
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      <Dialog open onClose={onClose} fullWidth maxWidth="xs">
+        <DialogTitle>Modifier le participant</DialogTitle>
+
+        <DialogContent>
+          <Stack spacing={2.5} sx={{ mt: 1 }}>
+            <TextField label="Nom affiché" value={name} onChange={(e) => setName(e.target.value)} />
+
+            {canChangeRole && (
+              <Stack spacing={0.5}>
+                <Typography variant="overline" color="text.secondary">
+                  Rôle
+                </Typography>
+                <ToggleButtonGroup
+                  exclusive
+                  fullWidth
+                  size="small"
+                  value={role}
+                  onChange={(_, v: 'PLAYER' | 'MANAGER' | null) => v && setRole(v)}
+                >
+                  <ToggleButton value="PLAYER">Joueur</ToggleButton>
+                  <ToggleButton value="MANAGER">Gestionnaire</ToggleButton>
+                </ToggleButtonGroup>
+              </Stack>
+            )}
+
+            {linked && (
+              <Stack spacing={0.5}>
+                <Typography variant="overline" color="text.secondary">
+                  Compte rattaché
+                </Typography>
+                <Button
+                  color="error"
+                  variant="outlined"
+                  startIcon={<LinkOffIcon />}
+                  onClick={() => setUnlinking(true)}
+                >
+                  Détacher le compte
+                </Button>
+              </Stack>
+            )}
+          </Stack>
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={onClose}>Annuler</Button>
+          <Button variant="contained" disabled={!name.trim() || !dirty || saving} onClick={save}>
+            Enregistrer
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <ConfirmDialog
+        open={unlinking}
+        title="Détacher le compte ?"
+        confirmLabel="Détacher"
+        danger
+        pending={unlink.isPending}
+        onClose={() => setUnlinking(false)}
+        onConfirm={() =>
+          unlink.mutate(member.id, {
+            onSuccess: () => {
+              setUnlinking(false)
+              onClose()
+            },
+          })
+        }
+      >
+        <Typography variant="body2" color="text.secondary">
+          {member.displayName} redeviendra un participant sans compte, avec tout son
+          historique d&apos;amendes. La personne concernée sera invitée à choisir de nouveau
+          son nom à sa prochaine ouverture de l&apos;app. Ni son compte ni ses amendes ne
+          sont supprimés.
+        </Typography>
+      </ConfirmDialog>
+    </>
+  )
+}
+
+const MembersSection = ({ canManage }: { canManage: boolean }) => {
+  const members = useMembers()
   const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState<MemberSummary | null>(null)
 
   return (
     <>
@@ -484,53 +625,41 @@ const MembersSection = ({ canManage }: { canManage: boolean }) => {
       <AddParticipantDialog open={adding} onClose={() => setAdding(false)} />
 
       <Stack spacing={1} sx={{ mb: 2 }}>
-        {members.data?.map((m) => {
-          const isSelf = m.userId === me.data?.user.id
-          // Un rôle est porté par un COMPTE : un participant fantôme n'en a pas,
-          // et le rôle ADMIN n'est ni transférable ni révocable en V1.
-          // Un gestionnaire voit les rôles mais ne les change pas.
-          const canToggle = canManage && m.userId !== null && m.role !== 'ADMIN' && !isSelf
+        {members.data?.map((m) => (
+          <Card key={m.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Initials name={m.displayName} size={32} />
+            <Typography sx={{ fontWeight: 600, flex: 1, minWidth: 0 }} noWrap>
+              {m.displayName}
+            </Typography>
 
-          return (
-            <Card key={m.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <Initials name={m.displayName} size={32} />
-              <Typography sx={{ fontWeight: 600, flex: 1, minWidth: 0 }} noWrap>
-                {m.displayName}
-              </Typography>
+            {/* Toujours une pastille au même endroit : une ligne sans rien à
+                droite se lit comme un bug d'affichage. */}
+            {m.userId === null ? (
+              <Chip
+                size="small"
+                label="Pas inscrit"
+                sx={{ bgcolor: 'rgba(148,163,184,0.15)', color: palette.textMuted }}
+              />
+            ) : m.role === 'ADMIN' ? (
+              <Chip size="small" label="Admin" color="secondary" />
+            ) : (
+              <Chip
+                size="small"
+                label={m.role === 'MANAGER' ? 'Gestionnaire' : 'Joueur'}
+                color={m.role === 'MANAGER' ? 'primary' : 'default'}
+              />
+            )}
 
-              {/* Toujours une pastille au même endroit, cliquable ou non :
-                  une ligne sans rien à droite se lit comme un bug d'affichage. */}
-              {m.userId === null ? (
-                <Chip
-                  size="small"
-                  label="Pas inscrit"
-                  sx={{
-                    bgcolor: 'rgba(148,163,184,0.15)',
-                    color: palette.textMuted,
-                  }}
-                />
-              ) : m.role === 'ADMIN' ? (
-                <Chip size="small" label="Admin" color="secondary" />
-              ) : (
-                <Chip
-                  size="small"
-                  label={m.role === 'MANAGER' ? 'Gestionnaire' : 'Joueur'}
-                  color={m.role === 'MANAGER' ? 'primary' : 'default'}
-                  onClick={
-                    canToggle
-                      ? () =>
-                          updateRole.mutate({
-                            userId: m.userId!,
-                            role: m.role === 'MANAGER' ? 'PLAYER' : 'MANAGER',
-                          })
-                      : undefined
-                  }
-                />
-              )}
-            </Card>
-          )
-        })}
+            {canManage && (
+              <IconButton size="small" aria-label="Modifier" onClick={() => setEditing(m)}>
+                <EditOutlinedIcon fontSize="small" />
+              </IconButton>
+            )}
+          </Card>
+        ))}
       </Stack>
+
+      <MemberDialog member={editing} onClose={() => setEditing(null)} />
 
       <Typography variant="caption" color="text.secondary">
         Le rôle Admin n&apos;est ni transférable ni révocable dans cette version.

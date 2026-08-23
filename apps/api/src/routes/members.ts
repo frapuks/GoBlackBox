@@ -92,6 +92,36 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
     return loadMember(id)
   })
 
+  /**
+   * Détache le compte du participant.
+   *
+   * Sert à rattraper l'erreur d'un joueur qui, à l'inscription, a réclamé le
+   * mauvais nom dans la liste. Le participant redevient « fantôme » avec tout
+   * son historique d'amendes, et le compte se retrouve sans membre : au
+   * prochain chargement, l'app le renvoie vers « Qui es-tu ? » pour qu'il
+   * choisisse correctement.
+   *
+   * Rien n'est supprimé — ni le compte, ni les amendes du participant.
+   */
+  app.post('/members/:id/unlink', adminOnly, async (req): Promise<MemberSummary> => {
+    const id = parseId(req.params)
+
+    // Se détacher soi-même est récupérable — il suffit de réclamer à nouveau —
+    // mais l'admin perd entre-temps l'accès à toutes les routes qui exigent un
+    // membre. Autant l'empêcher plutôt que d'avoir à s'en sortir.
+    if (id === req.currentUser.memberId) {
+      throw app.httpErrors.badRequest('Tu ne peux pas détacher ton propre compte')
+    }
+
+    const updated = await queryOne<{ id: number }>(
+      'UPDATE members SET user_id = NULL WHERE id = $1 AND user_id IS NOT NULL RETURNING id',
+      [id],
+    )
+    if (!updated) throw app.httpErrors.notFound('Membre introuvable ou déjà sans compte')
+
+    return loadMember(id)
+  })
+
   /** Promotion / rétrogradation MANAGER. Le rôle ADMIN n'est pas transférable en V1. */
   app.patch('/users/:id/role', adminOnly, async (req) => {
     const id = parseId(req.params)

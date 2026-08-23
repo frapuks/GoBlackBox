@@ -210,6 +210,10 @@ export const useUpdateMember = () =>
     return patch<MemberSummary>(`/members/${id}`, body)
   })
 
+/** Détache le compte d'un participant : sert à corriger un nom mal réclamé. */
+export const useUnlinkMember = () =>
+  useDataMutation((id: number) => post<MemberSummary>(`/members/${id}/unlink`))
+
 export const useUpdateRole = () =>
   useDataMutation((v: { userId: number; role: 'MANAGER' | 'PLAYER' }) =>
     patch(`/users/${v.userId}/role`, { role: v.role }),

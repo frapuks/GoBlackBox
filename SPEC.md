@@ -164,6 +164,7 @@ Changer `late_after_days` reclasse instantanément tout l'historique. C'est voul
 | **Ajouter** un participant | ✅ | ❌ | ❌ |
 | **Régénérer** le code d invitation | ✅ | ❌ | ❌ |
 | Donner / retirer le rôle MANAGER | ✅ | ❌ | ❌ |
+| Détacher un compte de son participant | ✅ | ❌ | ❌ |
 | Activer une fonctionnalité (pénalités, cotisations, signalements) | ✅ | ❌ | ❌ |
 
 ADMIN est **unique et non transférable** en V1.
@@ -204,7 +205,8 @@ GET    /dashboard             classement : membres + totaux
 GET    /members
 POST   /members               admin/manager
 GET    /members/:id           (`/members/me` = même payload)
-PATCH  /members/:id           renommer
+PATCH  /members/:id           renommer — admin/manager
+POST   /members/:id/unlink    admin — détache le compte du participant
 PATCH  /users/:id/role        admin
 
 GET    /rules
@@ -489,3 +491,31 @@ AND (f.created_at AT TIME ZONE 'Europe/Paris')::date + s.late_after_days
 
 Aucun écran n'a donc à s'en soucier, et surtout aucun ne peut l'oublier : le
 serveur renvoie simplement `isLate: false` partout.
+
+---
+
+## 12. Détacher un compte de son participant
+
+Cas visé : un joueur s'inscrit et **réclame le mauvais nom** dans la liste.
+
+Depuis Réglages → Membres, l'admin ouvre un participant et choisit
+« Détacher le compte ». Concrètement, `members.user_id` repasse à `NULL`.
+
+Ce que ça produit, sans rien supprimer :
+
+- le participant redevient **fantôme**, avec tout son historique d'amendes ;
+- il réapparaît dans la liste « Qui es-tu ? » ;
+- le compte se retrouve sans membre, donc l'app le renvoie vers cet écran à sa
+  prochaine ouverture, où il choisit correctement.
+
+C'est le pivot `members` / `users` qui rend l'opération triviale : l'identité et
+les amendes vivent sur le participant, l'accès vit sur le compte. Les délier ne
+touche ni à l'un ni à l'autre.
+
+**L'admin ne peut pas se détacher lui-même.** L'opération serait récupérable —
+il suffirait de réclamer à nouveau — mais il perdrait entre-temps l'accès à
+toutes les routes exigeant un membre.
+
+La même boîte permet de renommer le participant et de changer son rôle. Chaque
+action part sur sa propre requête : renommer quelqu'un ne peut pas modifier son
+rôle par effet de bord.
