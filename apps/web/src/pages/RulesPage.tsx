@@ -265,9 +265,13 @@ const ApplyRuleCard = ({
   const archived = rule.archivedAt !== null
   const isPenalty = rule.kind === 'PENALTY'
 
-  const members = dashboard.data?.members ?? []
   // Le décompte affiché applique la même règle que le serveur, pour que le
   // bouton ne promette jamais un nombre différent de ce qui sera créé.
+  //
+  // Contrairement au classement, l'exclusion est ici SANS exception : un
+  // participant hors amendes n'est jamais la cible d'une application, même s'il
+  // a un historique.
+  const members = (dashboard.data?.members ?? []).filter((m) => m.receivesFines)
   const targets = isPenalty ? members.filter((m) => m.hasLate) : members
   const count = targets.length
 

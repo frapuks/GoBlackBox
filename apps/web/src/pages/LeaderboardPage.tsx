@@ -21,6 +21,11 @@ export const LeaderboardPage = () => {
   if (isPending) return <CircularProgress />
   if (!data) return null
 
+  // Un participant hors amendes n'a rien à faire dans un classement d'amendes —
+  // sauf s'il en a déjà reçu avant d'en être sorti : son historique reste dû, et
+  // le masquer donnerait une cagnotte dont une part n'est attribuée à personne.
+  const ranked = data.members.filter((m) => m.receivesFines || m.hasFines)
+
   return (
     <>
       <Stack alignItems="center" sx={{ pb: 3 }}>
@@ -37,10 +42,10 @@ export const LeaderboardPage = () => {
 
       <SectionTitle>Classement</SectionTitle>
 
-      {data.members.length === 0 && <EmptyState>Aucun membre pour le moment</EmptyState>}
+      {ranked.length === 0 && <EmptyState>Aucun membre pour le moment</EmptyState>}
 
       <Stack spacing={1}>
-        {data.members.map((m, i) => {
+        {ranked.map((m, i) => {
           const rank = i + 1
           const settled = m.totalOwed === 0
 

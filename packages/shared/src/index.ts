@@ -101,6 +101,11 @@ export type MemberSummary = {
   totalPaid: number
   /** Au moins une amende impayée dépassant lateAfterDays. */
   hasLate: boolean
+  /**
+   * A déjà reçu au moins une amende validée. Distinct de `totalOwed > 0` :
+   * une amende peut valoir 0 €, et un signalement en attente ne compte pas.
+   */
+  hasFines: boolean
 }
 
 export type MemberDetail = MemberSummary & { fines: Fine[] }
