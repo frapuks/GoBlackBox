@@ -18,9 +18,14 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
 
-    <!-- Le contenu passe sous la barre d'état ; les marges `safe-area-inset`
-         du thème se chargent déjà de ne rien laisser dessous. -->
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- « black » et NON « black-translucent ».
+         Avec la valeur translucide, iOS place le web view en haut de l'écran mais
+         lui donne la hauteur d'une mise en page NON translucide : sur un écran de
+         844 points, le viewport en fait 797, ancré à 0. Les 47 points d'écart —
+         exactement la hauteur de l'encoche du haut — tombent en bas, hors de
+         portée de toute unité CSS, et la barre du bas flotte au-dessus du vide.
+         Mesuré sur iPhone 13 : inner=797 pour screen=844. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="BLACKBOX" />
 
     <link rel="manifest" href="/manifest.webmanifest" />

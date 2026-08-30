@@ -77,7 +77,14 @@ export const theme = createTheme({
   components: {
     MuiCssBaseline: {
       styleOverrides: {
-        body: { backgroundColor: palette.bg },
+        body: {
+          backgroundColor: palette.bg,
+          // Coupe le rebond du document sur iOS : sans ça, tirer sur la page
+          // fait glisser la barre du bas avec le doigt avant qu'elle ne
+          // reprenne sa place. Le défilement réel se passe dans le conteneur
+          // interne de AppLayout, pas ici.
+          overscrollBehaviorY: 'none',
+        },
       },
     },
     MuiPaper: {
