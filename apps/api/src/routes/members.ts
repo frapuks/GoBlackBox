@@ -6,7 +6,9 @@ import {
   type Dashboard,
   type MemberDetail,
   type MemberSummary,
+  type ResetPasswordResult,
 } from '@blackbox/shared'
+import { generateTemporaryPassword, hashPassword } from '../auth.js'
 import { query, queryOne } from '../db.js'
 import {
   FINE_SQL,
@@ -138,6 +140,43 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
 
     await query('UPDATE users SET role = $2 WHERE id = $1', [id, body.role])
     return { ok: true }
+  })
+
+  /**
+   * Mot de passe oublié, sans email : l'admin en génère un temporaire et le
+   * transmet lui-même. Il n'est jamais stocké en clair et n'est renvoyé qu'ici,
+   * une seule fois — aucune route ne permet de le relire.
+   *
+   * L'incrément de `token_version` périme les sessions en cours : sans lui, un
+   * appareil resté connecté survivrait à la réinitialisation, qui ne fermerait
+   * donc rien. Le drapeau force le changement à la prochaine connexion.
+   */
+  app.post('/users/:id/reset-password', adminOnly, async (req): Promise<ResetPasswordResult> => {
+    const id = parseId(req.params)
+
+    // L'admin connaît son mot de passe : il le change depuis ses réglages.
+    // Se le réinitialiser reviendrait à se déconnecter de tous ses appareils
+    // pour rien.
+    if (id === req.currentUser.id) {
+      throw app.httpErrors.badRequest('Change ton propre mot de passe depuis tes réglages')
+    }
+
+    const temporaryPassword = generateTemporaryPassword()
+
+    const updated = await queryOne<{ id: number }>(
+      `UPDATE users
+          SET password_hash        = $2,
+              must_change_password = TRUE,
+              token_version        = token_version + 1
+        WHERE id = $1
+        RETURNING id`,
+      [id, await hashPassword(temporaryPassword)],
+    )
+    if (!updated) throw app.httpErrors.notFound('Compte introuvable')
+
+    req.log.info({ targetUserId: id, by: req.currentUser.id }, 'mot de passe réinitialisé')
+
+    return { temporaryPassword }
   })
 
   const parseId = (params: unknown): number => {

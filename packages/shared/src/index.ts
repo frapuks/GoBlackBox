@@ -49,7 +49,16 @@ export const claimInput = z.union([
 export type ClaimInput = z.infer<typeof claimInput>
 
 export type Me = {
-  user: { id: number; email: string; role: Role }
+  user: {
+    id: number
+    email: string
+    role: Role
+    /**
+     * Vrai après une réinitialisation par l'admin : l'app bloque sur l'écran de
+     * changement tant que ce n'est pas fait.
+     */
+    mustChangePassword: boolean
+  }
   /** null tant que le compte n'a pas réclamé son membre. */
   member: { id: number; displayName: string } | null
 }
@@ -69,6 +78,12 @@ export const updateMemberInput = z.object({
 })
 
 export const updateRoleInput = z.object({ role: z.enum(['MANAGER', 'PLAYER']) })
+
+/**
+ * Le mot de passe temporaire n'est renvoyé qu'ici, une seule fois : il n'est
+ * stocké que haché et aucune route ne permet de le relire.
+ */
+export type ResetPasswordResult = { temporaryPassword: string }
 
 export type MemberSummary = {
   id: number

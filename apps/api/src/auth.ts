@@ -71,8 +71,9 @@ declare module 'fastify' {
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
-    payload: { uid: number }
-    user: { uid: number }
+    // `tv` = token_version au moment de l'émission. Voir requireAuth.
+    payload: { uid: number; tv: number }
+    user: { uid: number; tv: number }
   }
 }
 
@@ -99,10 +100,12 @@ export const registerAuth = async (app: FastifyInstance) => {
       id: number
       email: string
       role: Role
+      token_version: number
       member_id: number | null
       member_name: string | null
     }>(
-      `SELECT u.id, u.email, u.role, m.id AS member_id, m.display_name AS member_name
+      `SELECT u.id, u.email, u.role, u.token_version,
+              m.id AS member_id, m.display_name AS member_name
          FROM users u
          LEFT JOIN members m ON m.user_id = u.id
         WHERE u.id = $1`,
@@ -111,6 +114,19 @@ export const registerAuth = async (app: FastifyInstance) => {
 
     // Le compte a pu être supprimé alors que le cookie est encore valide.
     if (!row) throw app.httpErrors.unauthorized('Compte introuvable')
+
+    // Le cookie vit trente jours : sans ce contrôle, une session ouverte
+    // ailleurs survivrait à une réinitialisation du mot de passe, qui ne
+    // fermerait donc rien. La colonne voyage dans un SELECT déjà nécessaire,
+    // la vérification ne coûte aucune requête.
+    //
+    // `?? 0` : les jetons émis avant cette version ne portent pas le champ.
+    // Sans ça, la mise à jour déconnecterait toute l'équipe d'un coup. Ils
+    // restent valides jusqu'à la première réinitialisation, qui passe le
+    // compteur à 1 et les périme comme les autres.
+    if ((req.user.tv ?? 0) !== row.token_version) {
+      throw app.httpErrors.unauthorized('Session expirée')
+    }
 
     req.currentUser = {
       id: row.id,
@@ -138,10 +154,24 @@ export const registerAuth = async (app: FastifyInstance) => {
   )
 }
 
+/** Ni O/0 ni I/1, pour éviter les erreurs de saisie. 32 caractères : 256 est un
+ *  multiple de 32, donc le modulo ne biaise aucun tirage. */
+const READABLE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+
+const readableChars = (n: number) =>
+  Array.from(randomBytes(n)).map((b) => READABLE_ALPHABET[b % READABLE_ALPHABET.length]!)
+
 /** Code d'invitation lisible : ni O/0 ni I/1, pour éviter les erreurs de saisie. */
-export const generateInviteCode = (): string => {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  return Array.from(randomBytes(8))
-    .map((b) => alphabet[b % alphabet.length])
-    .join('')
+export const generateInviteCode = (): string => readableChars(8).join('')
+
+/**
+ * Mot de passe temporaire, destiné à être DICTÉ au téléphone ou collé dans une
+ * conversation : d'où l'alphabet sans ambiguïté et les groupes de quatre.
+ *
+ * 10 caractères sur 32, soit 2⁵⁰ combinaisons — largement assez pour un secret
+ * à usage unique, qui ne survit qu'au premier changement de mot de passe.
+ */
+export const generateTemporaryPassword = (): string => {
+  const c = readableChars(10)
+  return `${c.slice(0, 4).join('')}-${c.slice(4, 8).join('')}-${c.slice(8).join('')}`
 }

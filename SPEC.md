@@ -77,7 +77,8 @@ Il pilote le drapeau `Secure` du cookie de session (impossible en
 ## 2. Modèle de données
 
 ```sql
-users     id, email, password_hash, role, created_at
+users     id, email, password_hash, role, created_at,
+          must_change_password, token_version   -- voir § 14
           role ∈ ('ADMIN','MANAGER','PLAYER')
 
 members   id, display_name, user_id (nullable, unique), receives_fines
@@ -168,6 +169,7 @@ Changer `late_after_days` reclasse instantanément tout l'historique. C'est voul
 | Renommer un participant | ✅ | ❌ | ❌ |
 | Rendre un participant amendable ou non | ✅ | ❌ | ❌ |
 | Détacher un compte de son participant | ✅ | ❌ | ❌ |
+| Réinitialiser le mot de passe d un autre compte | ✅ | ❌ | ❌ |
 | Activer une fonctionnalité (pénalités, cotisations, signalements) | ✅ | ❌ | ❌ |
 
 ADMIN est **unique et non transférable** en V1.
@@ -211,6 +213,7 @@ GET    /members/:id           (`/members/me` = même payload)
 PATCH  /members/:id           renommer, amendable ou non — admin
 POST   /members/:id/unlink    admin — détache le compte du participant
 PATCH  /users/:id/role        admin
+POST   /users/:id/reset-password  admin — renvoie le mot de passe temporaire
 
 GET    /rules
 POST   /rules                 admin/manager — { label, description?, amount, kind }
@@ -555,3 +558,58 @@ exempté est refusé **en entier** — jamais à moitié appliqué.
 Le classement n'en tient pas encore compte : un exempté y figure comme tout le
 monde. À traiter avec le calcul de la cagnotte, qui somme la liste des membres
 et perdrait leurs anciennes amendes si on les filtrait naïvement.
+
+---
+
+## 14. Mot de passe oublié
+
+Pas d'envoi d'email — donc ni fournisseur SMTP, ni jeton, ni table de jetons,
+ni secret supplémentaire à sauvegarder. **L'admin réinitialise, et transmet
+lui-même.**
+
+Le parcours :
+
+1. Réglages → Membres → un participant rattaché à un compte → « Réinitialiser
+   le mot de passe », avec confirmation.
+2. `POST /users/:id/reset-password` (admin). Le serveur tire un mot de passe
+   temporaire, le hache, lève `must_change_password` et incrémente
+   `token_version`.
+3. La réponse le renvoie **en clair, une seule fois**. Il n'est stocké que
+   haché : aucune route ne permet de le relire.
+4. La personne se connecte avec, et l'app la bloque sur `/password` tant
+   qu'elle n'en a pas choisi un autre. `PATCH /me` fait retomber le drapeau.
+
+Le mot de passe temporaire est fait pour être **dicté au téléphone** : dix
+caractères d'un alphabet sans ambiguïté (ni `O`/`0`, ni `I`/`1`), en groupes de
+quatre — `UNZE-CDYH-5X`. 2⁵⁰ combinaisons pour un secret à usage unique.
+
+### Pourquoi `token_version`
+
+Le cookie de session vit trente jours et **survivrait** au changement de mot de
+passe : une session ouverte ailleurs continuerait de fonctionner, et la
+réinitialisation ne fermerait rien.
+
+Le compteur voyage dans le JWT et est comparé à celui de la base à chaque
+requête. L'incrémenter périme d'un coup tous les jetons émis avant. Le contrôle
+**ne coûte aucune requête** : `requireAuth` relit déjà l'utilisateur à chaque
+appel, la colonne rejoint ce `SELECT`.
+
+Les jetons émis avant cette version ne portent pas le champ et sont lus comme
+version 0 : la mise à jour ne déconnecte donc personne.
+
+Un changement volontaire depuis les Réglages n'incrémente **pas** le compteur —
+l'utilisateur se déconnecterait lui-même dans la foulée.
+
+### Limites assumées
+
+- **Personne ne peut réinitialiser l'admin.** Il n'y a personne au-dessus de
+  lui. Le recours est l'accès à la base sur le Pi.
+- **Le blocage est côté front seulement.** Un compte en mot de passe temporaire
+  peut encore appeler l'API directement. C'est une mesure d'hygiène — s'assurer
+  que le mot de passe transmis par WhatsApp ne reste pas en place —, pas une
+  frontière de sécurité : la personne est bien elle-même.
+- **`PATCH /me` n'exige pas de membre**, contrairement au reste des routes
+  métier : un compte réinitialisé avant d'avoir réclamé son nom doit pouvoir
+  sortir de l'écran de changement.
+- **Aucune notification** n'est envoyée. La déconnexion de ses appareils est le
+  signal, et l'admin est en train de lui parler.

@@ -16,10 +16,11 @@ const loadMe = async (userId: number): Promise<Me> => {
     id: number
     email: string
     role: Role
+    must_change_password: boolean
     member_id: number | null
     display_name: string | null
   }>(
-    `SELECT u.id, u.email, u.role,
+    `SELECT u.id, u.email, u.role, u.must_change_password,
             m.id AS member_id, m.display_name
        FROM users u
        LEFT JOIN members m ON m.user_id = u.id
@@ -29,10 +30,19 @@ const loadMe = async (userId: number): Promise<Me> => {
   if (!row) throw new Error('utilisateur introuvable')
 
   return {
-    user: { id: row.id, email: row.email, role: row.role },
+    user: {
+      id: row.id,
+      email: row.email,
+      role: row.role,
+      mustChangePassword: row.must_change_password,
+    },
     member: row.member_id ? { id: row.member_id, displayName: row.display_name! } : null,
   }
 }
+
+/** Le jeton porte la version en cours : voir requireAuth. */
+const signToken = (app: Parameters<FastifyPluginAsync>[0], uid: number, tokenVersion: number) =>
+  app.jwt.sign({ uid, tv: tokenVersion })
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   /** Dit au front s'il doit afficher le champ « code d'invitation ». */
@@ -76,15 +86,16 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return rows[0]!.id
     })
 
-    reply.setCookie(COOKIE_NAME, app.jwt.sign({ uid: userId }), cookieOptions)
+    // Un compte qui vient d'être créé est forcément en version 0.
+    reply.setCookie(COOKIE_NAME, signToken(app, userId, 0), cookieOptions)
     return loadMe(userId)
   })
 
   app.post('/auth/login', async (req, reply): Promise<Me> => {
     const body = loginInput.parse(req.body)
 
-    const row = await queryOne<{ id: number; password_hash: string }>(
-      'SELECT id, password_hash FROM users WHERE email = $1',
+    const row = await queryOne<{ id: number; password_hash: string; token_version: number }>(
+      'SELECT id, password_hash, token_version FROM users WHERE email = $1',
       [body.email],
     )
 
@@ -93,7 +104,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!row) throw invalid
     if (!(await verifyPassword(body.password, row.password_hash))) throw invalid
 
-    reply.setCookie(COOKIE_NAME, app.jwt.sign({ uid: row.id }), cookieOptions)
+    reply.setCookie(COOKIE_NAME, signToken(app, row.id, row.token_version), cookieOptions)
     return loadMe(row.id)
   })
 

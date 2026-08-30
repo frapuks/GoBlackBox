@@ -7,6 +7,7 @@ import type {
   MemberDetail,
   MemberSummary,
   Me,
+  ResetPasswordResult,
   Rule,
   RuleContext,
   RuleKind,
@@ -213,6 +214,15 @@ export const useUpdateMember = () =>
 /** Détache le compte d'un participant : sert à corriger un nom mal réclamé. */
 export const useUnlinkMember = () =>
   useDataMutation((id: number) => post<MemberSummary>(`/members/${id}/unlink`))
+
+/**
+ * Réinitialisation par l'admin. Le mot de passe temporaire n'existe que dans
+ * cette réponse : il n'est stocké nulle part en clair et ne peut pas être relu.
+ */
+export const useResetPassword = () =>
+  useDataMutation((userId: number) =>
+    post<ResetPasswordResult>(`/users/${userId}/reset-password`),
+  )
 
 export const useUpdateRole = () =>
   useDataMutation((v: { userId: number; role: 'MANAGER' | 'PLAYER' }) =>

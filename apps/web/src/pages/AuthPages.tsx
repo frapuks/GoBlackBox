@@ -1,7 +1,14 @@
 import { useState } from 'react'
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
 import { Alert, Box, Button, Link, Stack, TextField, Typography } from '@mui/material'
-import { useClaim, useClaimable, useLogin, useSignup, useSignupContext } from '../api/hooks'
+import {
+  useClaim,
+  useClaimable,
+  useLogin,
+  useSignup,
+  useSignupContext,
+  useUpdateMe,
+} from '../api/hooks'
 import { Card, Initials, SectionTitle } from '../components/ui'
 import { palette } from '../theme'
 
@@ -217,6 +224,86 @@ export const ClaimPage = () => {
       {claim.error && (
         <Alert severity="error" sx={{ mt: 2 }}>
           {claim.error.message}
+        </Alert>
+      )}
+    </Shell>
+  )
+}
+
+/**
+ * Changement forcé après une réinitialisation par l'admin.
+ *
+ * Écran de la même famille que la connexion — hors de l'app, sans barre de
+ * navigation : tant que le mot de passe temporaire est en place, il n'y a rien
+ * d'autre à faire. La garde de routage y ramène toute autre adresse.
+ */
+export const ForcedPasswordPage = () => {
+  const navigate = useNavigate()
+  const updateMe = useUpdateMe()
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+
+  const tooShort = newPassword.length > 0 && newPassword.length < 8
+  const mismatch = confirmation.length > 0 && confirmation !== newPassword
+  const valid =
+    currentPassword.length > 0 && newPassword.length >= 8 && confirmation === newPassword
+
+  return (
+    <Shell>
+      <Stack
+        component="form"
+        spacing={1}
+        onSubmit={(e) => {
+          e.preventDefault()
+          updateMe.mutate(
+            { currentPassword, newPassword },
+            // Le drapeau retombe côté serveur ; la garde laisse alors passer.
+            { onSuccess: () => navigate('/', { replace: true }) },
+          )
+        }}
+      >
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Ton mot de passe a été réinitialisé. Choisis-en un nouveau pour continuer.
+        </Typography>
+
+        <TextField
+          label="Mot de passe temporaire"
+          type="password"
+          autoComplete="current-password"
+          value={currentPassword}
+          onChange={(e) => setCurrentPassword(e.target.value)}
+          helperText=" "
+          required
+        />
+        <TextField
+          label="Nouveau mot de passe"
+          type="password"
+          autoComplete="new-password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          error={tooShort}
+          helperText={tooShort ? '8 caractères minimum' : ' '}
+          required
+        />
+        <TextField
+          label="Confirmer le nouveau mot de passe"
+          type="password"
+          autoComplete="new-password"
+          value={confirmation}
+          onChange={(e) => setConfirmation(e.target.value)}
+          error={mismatch}
+          helperText={mismatch ? 'Les deux mots de passe ne correspondent pas' : ' '}
+          required
+        />
+        <Button type="submit" variant="contained" disabled={!valid || updateMe.isPending}>
+          Valider
+        </Button>
+      </Stack>
+
+      {updateMe.error && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {updateMe.error.message}
         </Alert>
       )}
     </Shell>

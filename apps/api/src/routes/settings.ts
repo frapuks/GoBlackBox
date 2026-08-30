@@ -112,7 +112,10 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     return toSettings(row!)
   })
 
-  app.patch('/me', auth, async (req): Promise<Me> => {
+  // Volontairement sans `requireMember`, contrairement au reste : un compte
+  // réinitialisé avant d'avoir réclamé son nom est bloqué sur l'écran de
+  // changement de mot de passe, et c'est cette route qui l'en sort.
+  app.patch('/me', { preHandler: [app.requireAuth] }, async (req): Promise<Me> => {
     const body = updateMeInput.parse(req.body)
     const userId = req.currentUser.id
 
@@ -129,10 +132,16 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
         if (!(await verifyPassword(body.currentPassword!, rows[0]!.password_hash))) {
           throw app.httpErrors.forbidden('Mot de passe actuel incorrect')
         }
-        await client.query('UPDATE users SET password_hash = $2 WHERE id = $1', [
-          userId,
-          await hashPassword(body.newPassword),
-        ])
+        // Le drapeau retombe ici, et nulle part ailleurs : c'est le seul geste
+        // qui prouve que le mot de passe temporaire a bien été remplacé.
+        // `token_version` n'est PAS incrémenté — l'utilisateur changerait son
+        // mot de passe et se déconnecterait lui-même dans la foulée.
+        await client.query(
+          `UPDATE users
+              SET password_hash = $2, must_change_password = FALSE
+            WHERE id = $1`,
+          [userId, await hashPassword(body.newPassword)],
+        )
       }
 
       if (body.displayName !== undefined) {
@@ -147,19 +156,26 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
       id: number
       email: string
       role: Me['user']['role']
-      member_id: number
-      display_name: string
+      must_change_password: boolean
+      member_id: number | null
+      display_name: string | null
     }>(
-      `SELECT u.id, u.email, u.role, m.id AS member_id, m.display_name
+      `SELECT u.id, u.email, u.role, u.must_change_password,
+              m.id AS member_id, m.display_name
          FROM users u
-         JOIN members m ON m.user_id = u.id
+         LEFT JOIN members m ON m.user_id = u.id
         WHERE u.id = $1`,
       [userId],
     )
 
     return {
-      user: { id: row!.id, email: row!.email, role: row!.role },
-      member: { id: row!.member_id, displayName: row!.display_name },
+      user: {
+        id: row!.id,
+        email: row!.email,
+        role: row!.role,
+        mustChangePassword: row!.must_change_password,
+      },
+      member: row!.member_id ? { id: row!.member_id, displayName: row!.display_name! } : null,
     }
   })
 }

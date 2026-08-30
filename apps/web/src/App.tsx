@@ -2,7 +2,7 @@ import { Box, CircularProgress } from '@mui/material'
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { useFineEntry, useMe } from './api/hooks'
 import { AppLayout } from './components/AppLayout'
-import { ClaimPage, LoginPage, SignupPage } from './pages/AuthPages'
+import { ClaimPage, ForcedPasswordPage, LoginPage, SignupPage } from './pages/AuthPages'
 import { LeaderboardPage } from './pages/LeaderboardPage'
 import { FeedPage } from './pages/FeedPage'
 import { AddFinePage } from './pages/AddFinePage'
@@ -17,10 +17,11 @@ const FullPageSpinner = () => (
 )
 
 /**
- * Trois états possibles :
- *  - déconnecté               → /login
- *  - connecté sans membre     → /signup/claim (l'inscription n'est pas finie)
- *  - connecté avec membre     → l'app
+ * Quatre états possibles :
+ *  - déconnecté                    → /login
+ *  - mot de passe réinitialisé     → /password (avant tout le reste)
+ *  - connecté sans membre          → /signup/claim (l'inscription n'est pas finie)
+ *  - connecté avec membre          → l'app
  */
 const RequireSession = ({ needsMember = true }: { needsMember?: boolean }) => {
   const { data: me, isPending } = useMe()
@@ -28,6 +29,13 @@ const RequireSession = ({ needsMember = true }: { needsMember?: boolean }) => {
 
   if (isPending) return <FullPageSpinner />
   if (!me) return <Navigate to="/login" replace />
+
+  // Avant la réclamation du nom : un mot de passe temporaire ne doit ouvrir
+  // aucune autre page, pas même celle qui termine l'inscription.
+  if (me.user.mustChangePassword && location.pathname !== '/password') {
+    return <Navigate to="/password" replace />
+  }
+
   if (needsMember && !me.member && location.pathname !== '/signup/claim') {
     return <Navigate to="/signup/claim" replace />
   }
@@ -82,6 +90,9 @@ export const App = () => (
           précisément l'écran qui le crée. */}
       <Route element={<RequireSession needsMember={false} />}>
         <Route path="/signup/claim" element={<ClaimPage />} />
+        {/* Hors de AppLayout : pas de barre de navigation vers des pages
+            qu'on refuserait d'ouvrir de toute façon. */}
+        <Route path="/password" element={<ForcedPasswordPage />} />
       </Route>
 
       <Route element={<RequireSession />}>

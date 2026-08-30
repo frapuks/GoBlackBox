@@ -23,6 +23,7 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import LinkOffIcon from '@mui/icons-material/LinkOff'
+import LockResetIcon from '@mui/icons-material/LockReset'
 import type { MemberSummary } from '@blackbox/shared'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CheckIcon from '@mui/icons-material/Check'
@@ -32,6 +33,7 @@ import {
   useMe,
   useMembers,
   useRegenerateInviteCode,
+  useResetPassword,
   useSettings,
   useUpdateMe,
   useUnlinkMember,
@@ -486,6 +488,7 @@ const MemberDialog = ({
   const [role, setRole] = useState<'PLAYER' | 'MANAGER'>('PLAYER')
   const [receivesFines, setReceivesFines] = useState(true)
   const [unlinking, setUnlinking] = useState(false)
+  const [resetting, setResetting] = useState(false)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -574,6 +577,15 @@ const MemberDialog = ({
                 <Typography variant="overline" color="text.secondary">
                   Compte rattaché
                 </Typography>
+                {!isSelf && (
+                  <Button
+                    variant="outlined"
+                    startIcon={<LockResetIcon />}
+                    onClick={() => setResetting(true)}
+                  >
+                    Réinitialiser le mot de passe
+                  </Button>
+                )}
                 <Button
                   color="error"
                   variant="outlined"
@@ -594,6 +606,12 @@ const MemberDialog = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ResetPasswordDialog
+        member={member}
+        open={resetting}
+        onClose={() => setResetting(false)}
+      />
 
       <ConfirmDialog
         open={unlinking}
@@ -619,6 +637,123 @@ const MemberDialog = ({
         </Typography>
       </ConfirmDialog>
     </>
+  )
+}
+
+/**
+ * Réinitialisation en deux temps : on confirme, puis on lit le mot de passe
+ * temporaire.
+ *
+ * Il n'apparaît qu'ici et qu'une fois — il n'est stocké que haché, aucune route
+ * ne permet de le relire. D'où l'avertissement, et le bouton copier.
+ */
+const ResetPasswordDialog = ({
+  member,
+  open,
+  onClose,
+}: {
+  member: MemberSummary
+  open: boolean
+  onClose: () => void
+}) => {
+  const resetPassword = useResetPassword()
+  const [password, setPassword] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const close = () => {
+    setPassword(null)
+    setCopied(false)
+    onClose()
+  }
+
+  return (
+    <Dialog open={open} onClose={close} fullWidth maxWidth="xs">
+      <DialogTitle>
+        {password ? 'Mot de passe temporaire' : 'Réinitialiser le mot de passe ?'}
+      </DialogTitle>
+
+      <DialogContent>
+        {password ? (
+          <Stack spacing={2}>
+            <Card
+              sx={{
+                bgcolor: 'rgba(148,163,184,0.08)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+              }}
+            >
+              <Typography
+                sx={{
+                  flex: 1,
+                  fontFamily: '"Bebas Neue", sans-serif',
+                  fontSize: '1.75rem',
+                  letterSpacing: '0.12em',
+                  color: palette.accent,
+                }}
+              >
+                {password}
+              </Typography>
+              <IconButton
+                aria-label={copied ? 'Copié' : 'Copier le mot de passe'}
+                sx={{ color: copied ? palette.accent : undefined }}
+                onClick={async () => {
+                  if (await copyToClipboard(password)) {
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2500)
+                  }
+                }}
+              >
+                {copied ? <CheckIcon /> : <ContentCopyIcon />}
+              </IconButton>
+            </Card>
+
+            <Alert severity="warning">
+              Note-le maintenant : il ne sera plus jamais affiché. Transmets-le à{' '}
+              {member.displayName}, qui devra choisir un nouveau mot de passe à sa prochaine
+              connexion.
+            </Alert>
+          </Stack>
+        ) : (
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Un mot de passe temporaire sera généré pour {member.displayName} et affiché une
+              seule fois. Son mot de passe actuel cessera immédiatement de fonctionner.
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Ses appareils déjà connectés seront déconnectés, et il devra choisir un nouveau
+              mot de passe avant de pouvoir utiliser l&apos;app.
+            </Typography>
+            {resetPassword.error && (
+              <Alert severity="error">{resetPassword.error.message}</Alert>
+            )}
+          </Stack>
+        )}
+      </DialogContent>
+
+      <DialogActions>
+        {password ? (
+          <Button variant="contained" onClick={close}>
+            J&apos;ai noté
+          </Button>
+        ) : (
+          <>
+            <Button onClick={close}>Annuler</Button>
+            <Button
+              variant="contained"
+              disabled={resetPassword.isPending}
+              onClick={() =>
+                resetPassword.mutate(member.userId!, {
+                  onSuccess: (r) => setPassword(r.temporaryPassword),
+                })
+              }
+            >
+              Réinitialiser
+            </Button>
+          </>
+        )}
+      </DialogActions>
+    </Dialog>
   )
 }
 
