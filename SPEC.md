@@ -422,6 +422,42 @@ schéma et l'écran.
 
 ---
 
+### 9.3 Plein écran sur iPhone — le piège de la barre d'état
+
+`apple-mobile-web-app-status-bar-style` doit valoir **`black`**, surtout pas
+`black-translucent`.
+
+Avec la valeur translucide, iOS place le web view en haut de l'écran mais lui
+donne la **hauteur d'une mise en page non translucide**. Position et hauteur se
+contredisent, et l'écart tombe en bas. Mesuré sur iPhone 13 :
+
+```
+screen = 844    inner = 797    safe-area-inset-top = 47
+```
+
+Les 47 points manquants — exactement l'encoche du haut — sont peints par la page
+mais **hors du viewport de mise en page**. Aucune unité CSS ne les atteint :
+`100vh`, `100dvh` et `inset: 0` valent tous 797. La barre du bas flotte donc
+au-dessus du vide, quoi qu'on fasse dans la feuille de style.
+
+Symptôme caractéristique : en tirant sur la page, la barre descend jusqu'au bord
+puis remonte au relâchement. C'est le rebond du document, et il prouve que la
+bande est accessible au rendu, pas à la mise en page.
+
+En `black`, hauteur et position redeviennent cohérentes, sans une ligne de
+JavaScript. Contrepartie : la barre d'état est noire opaque au lieu de laisser
+voir le fond de page — invisible sur cette palette — et `safe-area-inset-top`
+retombe à 0.
+
+⚠️ Cette balise n'est lue **qu'à l'installation** du raccourci. La modifier exige
+de supprimer puis réinstaller l'app sur l'écran d'accueil.
+
+Le rebond du document est par ailleurs coupé par `overscroll-behavior-y: none`
+sur le `body` : le défilement réel se passe dans le conteneur interne de
+`AppLayout`.
+
+---
+
 ## 10. Signalements par les joueurs
 
 Activable par l'**admin seul**, désactivé par défaut : élargir qui peut créer
