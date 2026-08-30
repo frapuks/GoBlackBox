@@ -63,7 +63,10 @@ export type SignupContext = { firstAccount: boolean }
 
 export const createMemberInput = z.object({ displayName: nameSchema })
 
-export const updateMemberInput = z.object({ displayName: nameSchema.optional() })
+export const updateMemberInput = z.object({
+  displayName: nameSchema.optional(),
+  receivesFines: z.boolean().optional(),
+})
 
 export const updateRoleInput = z.object({ role: z.enum(['MANAGER', 'PLAYER']) })
 
@@ -73,6 +76,12 @@ export type MemberSummary = {
   /** null = participant fantôme, pas encore de compte. */
   userId: number | null
   role: Role | null
+  /**
+   * Faux pour un gestionnaire qui ne joue pas : il n'apparaît plus à la saisie
+   * d'une amende et sort de la cible des cotisations et des pénalités.
+   * Indépendant du rôle — un gestionnaire qui joue reste amendable.
+   */
+  receivesFines: boolean
   totalOwed: number
   totalPaid: number
   /** Au moins une amende impayée dépassant lateAfterDays. */

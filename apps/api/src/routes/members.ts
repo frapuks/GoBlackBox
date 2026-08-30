@@ -19,9 +19,6 @@ import {
 
 export const memberRoutes: FastifyPluginAsync = async (app) => {
   const auth = { preHandler: [app.requireAuth, app.requireMember] }
-  const staff = {
-    preHandler: [app.requireAuth, app.requireMember, app.requireRole('ADMIN', 'MANAGER')],
-  }
   const adminOnly = {
     preHandler: [app.requireAuth, app.requireMember, app.requireRole('ADMIN')],
   }
@@ -75,17 +72,21 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
     return loadMemberDetail(id)
   })
 
-  app.patch('/members/:id', staff, async (req): Promise<MemberSummary> => {
+  // Même niveau que le rôle et le détachement : c'est le formulaire de
+  // modification d'un participant, et il est réservé à l'admin de bout en bout.
+  // Décider qui est amendable, en particulier, décide qui paie.
+  app.patch('/members/:id', adminOnly, async (req): Promise<MemberSummary> => {
     const id = parseId(req.params)
     const body = updateMemberInput.parse(req.body)
 
     // COALESCE : on ne réécrit que les champs réellement fournis.
     const updated = await queryOne<{ id: number }>(
       `UPDATE members
-          SET display_name = COALESCE($2, display_name)
+          SET display_name   = COALESCE($2, display_name),
+              receives_fines = COALESCE($3, receives_fines)
         WHERE id = $1
         RETURNING id`,
-      [id, body.displayName ?? null],
+      [id, body.displayName ?? null, body.receivesFines ?? null],
     )
     if (!updated) throw app.httpErrors.notFound('Membre introuvable')
 

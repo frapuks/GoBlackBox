@@ -484,6 +484,7 @@ const MemberDialog = ({
   const unlink = useUnlinkMember()
   const [name, setName] = useState('')
   const [role, setRole] = useState<'PLAYER' | 'MANAGER'>('PLAYER')
+  const [receivesFines, setReceivesFines] = useState(true)
   const [unlinking, setUnlinking] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -491,6 +492,7 @@ const MemberDialog = ({
     if (!member) return
     setName(member.displayName)
     setRole(member.role === 'MANAGER' ? 'MANAGER' : 'PLAYER')
+    setReceivesFines(member.receivesFines)
   }, [member])
 
   if (!member) return null
@@ -503,12 +505,19 @@ const MemberDialog = ({
 
   const nameChanged = name.trim() !== member.displayName
   const roleChanged = canChangeRole && role !== member.role
-  const dirty = nameChanged || roleChanged
+  const finesChanged = receivesFines !== member.receivesFines
+  const dirty = nameChanged || roleChanged || finesChanged
 
   const save = async () => {
     setSaving(true)
     try {
-      if (nameChanged) await updateMember.mutateAsync({ id: member.id, displayName: name.trim() })
+      if (nameChanged || finesChanged) {
+        await updateMember.mutateAsync({
+          id: member.id,
+          ...(nameChanged ? { displayName: name.trim() } : {}),
+          ...(finesChanged ? { receivesFines } : {}),
+        })
+      }
       if (roleChanged) await updateRole.mutateAsync({ userId: member.userId!, role })
       onClose()
     } finally {
@@ -542,6 +551,23 @@ const MemberDialog = ({
                 </ToggleButtonGroup>
               </Stack>
             )}
+
+            <Stack spacing={0.5}>
+              <Typography variant="overline" color="text.secondary">
+                Amendes
+              </Typography>
+              <FormControlLabel
+                sx={{ ml: 0, justifyContent: 'space-between' }}
+                labelPlacement="start"
+                control={
+                  <Switch
+                    checked={receivesFines}
+                    onChange={(e) => setReceivesFines(e.target.checked)}
+                  />
+                }
+                label={<Typography variant="body2">Concerné par les amendes</Typography>}
+              />
+            </Stack>
 
             {linked && (
               <Stack spacing={0.5}>
@@ -632,23 +658,41 @@ const MembersSection = ({ canManage }: { canManage: boolean }) => {
               {m.displayName}
             </Typography>
 
-            {/* Toujours une pastille au même endroit : une ligne sans rien à
-                droite se lit comme un bug d'affichage. */}
-            {m.userId === null ? (
-              <Chip
-                size="small"
-                label="Pas inscrit"
-                sx={{ bgcolor: 'rgba(148,163,184,0.15)', color: palette.textMuted }}
-              />
-            ) : m.role === 'ADMIN' ? (
-              <Chip size="small" label="Admin" color="secondary" />
-            ) : (
-              <Chip
-                size="small"
-                label={m.role === 'MANAGER' ? 'Gestionnaire' : 'Joueur'}
-                color={m.role === 'MANAGER' ? 'primary' : 'default'}
-              />
-            )}
+            {/* Les pastilles ne se compriment jamais : c'est le nom qui se
+                tronque, pas le statut. */}
+            <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
+              {/* Marquée en creux, et seulement pour l'exception : l'immense
+                  majorité des participants est amendable, l'afficher partout
+                  n'apprendrait rien. Contour plutôt que couleur pleine — les
+                  couleurs disent l'état d'un paiement dans toute l'app, pas
+                  celui d'un participant. */}
+              {!m.receivesFines && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label="Hors amendes"
+                  sx={{ borderColor: 'rgba(148,163,184,0.4)', color: palette.textMuted }}
+                />
+              )}
+
+              {/* Toujours une pastille au même endroit : une ligne sans rien à
+                  droite se lit comme un bug d'affichage. */}
+              {m.userId === null ? (
+                <Chip
+                  size="small"
+                  label="Pas inscrit"
+                  sx={{ bgcolor: 'rgba(148,163,184,0.15)', color: palette.textMuted }}
+                />
+              ) : m.role === 'ADMIN' ? (
+                <Chip size="small" label="Admin" color="secondary" />
+              ) : (
+                <Chip
+                  size="small"
+                  label={m.role === 'MANAGER' ? 'Gestionnaire' : 'Joueur'}
+                  color={m.role === 'MANAGER' ? 'primary' : 'default'}
+                />
+              )}
+            </Stack>
 
             {canManage && (
               <IconButton size="small" aria-label="Modifier" onClick={() => setEditing(m)}>
@@ -660,10 +704,6 @@ const MembersSection = ({ canManage }: { canManage: boolean }) => {
       </Stack>
 
       <MemberDialog member={editing} onClose={() => setEditing(null)} />
-
-      <Typography variant="caption" color="text.secondary">
-        Le rôle Admin n&apos;est ni transférable ni révocable dans cette version.
-      </Typography>
     </>
   )
 }

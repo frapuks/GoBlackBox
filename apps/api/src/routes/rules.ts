@@ -205,15 +205,20 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       }
       await assertKindEnabled(rule.kind)
 
+      // Un membre exempté n'est la cible d'aucune application : la condition
+      // vaut pour les cotisations comme pour les pénalités, seul le critère de
+      // retard s'y ajoute.
+      //
       // Le sous-SELECT est évalué sur l'état d'AVANT l'insertion : les amendes
       // créées par cette requête ne rendent donc personne éligible en cascade.
-      const targetFilter =
-        rule.kind === 'PENALTY'
-          ? `WHERE EXISTS (
-               SELECT 1 FROM fines f CROSS JOIN settings s
-                WHERE f.member_id = m.id AND ${IS_LATE_SQL}
-             )`
-          : ''
+      const conditions = ['m.receives_fines']
+      if (rule.kind === 'PENALTY') {
+        conditions.push(`EXISTS (
+          SELECT 1 FROM fines f CROSS JOIN settings s
+           WHERE f.member_id = m.id AND ${IS_LATE_SQL}
+        )`)
+      }
+      const targetFilter = `WHERE ${conditions.join(' AND ')}`
 
       // RETURNING : on récupère les identifiants pour notifier les joueurs
       // concernés, exactement comme lors d'une saisie individuelle.

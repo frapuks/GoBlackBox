@@ -39,7 +39,9 @@ export const AddFinePage = () => {
   const [context, setContext] = useState<RuleContext | null>(null)
   const [step, setStep] = useState<1 | 2 | 3>(1)
 
-  const all = members.data ?? []
+  // Un gestionnaire non-joueur n'est pas une cible : il ne doit pas apparaître
+  // ici, ni être emporté par « Tout sélectionner ».
+  const all = (members.data ?? []).filter((m) => m.receivesFines)
   const allSelected = all.length > 0 && selected.length === all.length
 
   // Seules les règles du contexte choisi sont proposées : c'est tout l'intérêt

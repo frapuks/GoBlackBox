@@ -33,6 +33,7 @@ export type MemberSummaryRow = {
   display_name: string
   user_id: number | null
   role: Role | null
+  receives_fines: boolean
   total_owed: number
   total_paid: number
   has_late: boolean
@@ -44,6 +45,7 @@ export const MEMBER_SUMMARY_SQL = `
          m.display_name,
          m.user_id,
          u.role,
+         m.receives_fines,
          -- Un signalement en attente ne compte NULLE PART tant qu'il n'est pas
          -- validé : ni dans le dû, ni dans le payé, ni dans le retard. Sinon la
          -- cagnotte afficherait de l'argent qu'un gestionnaire n'a pas entériné.
@@ -64,6 +66,7 @@ export const toMemberSummary = (r: MemberSummaryRow): MemberSummary => ({
   displayName: r.display_name,
   userId: r.user_id,
   role: r.role,
+  receivesFines: r.receives_fines,
   totalOwed: r.total_owed,
   totalPaid: r.total_paid,
   hasLate: r.has_late,

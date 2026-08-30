@@ -92,13 +92,18 @@ export const fineRoutes: FastifyPluginAsync = async (app) => {
         throw app.httpErrors.badRequest('Cette règle n’a pas de palier')
       }
 
+      // `receives_fines` fait partie du contrôle d'existence : un membre exempté
+      // ne remonte pas, et le lot est refusé comme s'il n'existait pas. Le front
+      // ne le propose déjà plus, mais la règle se tient ici.
       const { rows: found } = await client.query<{ id: number }>(
-        'SELECT id FROM members WHERE id = ANY($1::int[])',
+        'SELECT id FROM members WHERE id = ANY($1::int[]) AND receives_fines',
         [memberIds],
       )
       // Tout ou rien : une sélection contenant un membre supprimé entre-temps
       // ne doit pas créer un lot d'amendes à moitié appliqué.
-      if (found.length !== memberIds.length) throw app.httpErrors.badRequest('Membre inconnu')
+      if (found.length !== memberIds.length) {
+        throw app.httpErrors.badRequest('Membre inconnu ou non concerné par les amendes')
+      }
 
       // UNNEST : une seule requête quel que soit le nombre de joueurs.
       const { rows } = await client.query<{ id: number }>(

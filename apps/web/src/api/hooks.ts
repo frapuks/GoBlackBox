@@ -205,7 +205,7 @@ export const useCreateMember = () =>
   useDataMutation((v: { displayName: string }) => post<MemberSummary>('/members', v))
 
 export const useUpdateMember = () =>
-  useDataMutation((v: { id: number; displayName?: string }) => {
+  useDataMutation((v: { id: number; displayName?: string; receivesFines?: boolean }) => {
     const { id, ...body } = v
     return patch<MemberSummary>(`/members/${id}`, body)
   })

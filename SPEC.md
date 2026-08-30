@@ -80,9 +80,11 @@ Il pilote le drapeau `Secure` du cookie de session (impossible en
 users     id, email, password_hash, role, created_at
           role ∈ ('ADMIN','MANAGER','PLAYER')
 
-members   id, display_name, user_id (nullable, unique)
+members   id, display_name, user_id (nullable, unique), receives_fines
           -- user_id NULL = participant « fantôme », créé par un gestionnaire
           -- un participant est défini par son seul nom : pas de poste
+          -- receives_fines FALSE = non amendable (voir § 13). Axe distinct du
+          -- rôle : un gestionnaire qui joue reste amendable
 
 rules     id, label, description, amount, archived_at,
           context ∈ ('MATCH','TRAINING','OTHER')  -- où la règle s'applique
@@ -158,12 +160,13 @@ Changer `late_after_days` reclasse instantanément tout l'historique. C'est voul
 | Supprimer une amende | ✅ | ✅ | ❌ |
 | Créer / archiver une règle ou une cotisation | ✅ | ✅ | ❌ |
 | Appliquer une cotisation / une pénalité | ✅ | ✅ | ❌ |
-| Renommer un membre | ✅ | ✅ | ❌ |
 | Modifier `late_after_days` | ✅ | ✅ | ❌ |
 | Voir et copier le code d invitation | ✅ | ✅ | ❌ |
 | **Ajouter** un participant | ✅ | ❌ | ❌ |
 | **Régénérer** le code d invitation | ✅ | ❌ | ❌ |
 | Donner / retirer le rôle MANAGER | ✅ | ❌ | ❌ |
+| Renommer un participant | ✅ | ❌ | ❌ |
+| Rendre un participant amendable ou non | ✅ | ❌ | ❌ |
 | Détacher un compte de son participant | ✅ | ❌ | ❌ |
 | Activer une fonctionnalité (pénalités, cotisations, signalements) | ✅ | ❌ | ❌ |
 
@@ -203,9 +206,9 @@ POST   /auth/claim            { memberId } | { displayName }
 
 GET    /dashboard             classement : membres + totaux
 GET    /members
-POST   /members               admin/manager
+POST   /members               admin
 GET    /members/:id           (`/members/me` = même payload)
-PATCH  /members/:id           renommer — admin/manager
+PATCH  /members/:id           renommer, amendable ou non — admin
 POST   /members/:id/unlink    admin — détache le compte du participant
 PATCH  /users/:id/role        admin
 
@@ -519,3 +522,36 @@ toutes les routes exigeant un membre.
 La même boîte permet de renommer le participant et de changer son rôle. Chaque
 action part sur sa propre requête : renommer quelqu'un ne peut pas modifier son
 rôle par effet de bord.
+
+---
+
+## 13. Participants non amendables
+
+Cas visé : quelqu'un tient la caisse **sans jouer**. Il valide les paiements,
+mais ne doit jamais devoir un centime.
+
+Le rôle ne suffit pas à l'exprimer — un gestionnaire qui joue reste amendable,
+et un joueur ordinaire pourrait être exempté. C'est un second axe, porté par
+`members.receives_fines` (`TRUE` par défaut).
+
+Désactivé, le participant :
+
+- n'apparaît plus dans le sélecteur de l'écran d'ajout d'amende, et n'est pas
+  emporté par « Tout sélectionner » ;
+- sort de la cible des **cotisations** ;
+- sort de la cible des **pénalités**, même s'il a une amende impayée en retard.
+
+Les trois sortes de règles finissent en ligne dans `fines` : une seule colonne
+les filtre toutes.
+
+**Ses amendes déjà posées sont conservées** et restent dues, exactement comme
+couper une fonctionnalité ne supprime pas ce qu'elle a produit (§ 11). Seule la
+création de nouvelles est bloquée.
+
+La garde est côté serveur, pas seulement dans l'interface : `POST /fines`
+intègre `receives_fines` à son contrôle d'existence, donc un lot contenant un
+exempté est refusé **en entier** — jamais à moitié appliqué.
+
+Le classement n'en tient pas encore compte : un exempté y figure comme tout le
+monde. À traiter avec le calcul de la cagnotte, qui somme la liste des membres
+et perdrait leurs anciennes amendes si on les filtrait naïvement.
