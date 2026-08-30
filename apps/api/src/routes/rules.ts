@@ -74,7 +74,12 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
   }
 
   app.get('/rules', auth, async (req): Promise<Rule[]> => {
-    const includeArchived = (req.query as { archived?: string }).archived === '1'
+    // L'archive ne s'ouvre qu'à ceux qui peuvent désarchiver. Un joueur qui
+    // forgerait `?archived=1` reçoit les règles actives, pas une erreur : le
+    // paramètre relève de l'affichage, et un 403 casserait tout l'écran Règles
+    // pour un réglage que le front ne lui propose même pas.
+    const isStaff = req.currentUser.role === 'ADMIN' || req.currentUser.role === 'MANAGER'
+    const includeArchived = isStaff && (req.query as { archived?: string }).archived === '1'
     const rows = await query<RuleRow>(
       `${SELECT}
         ${includeArchived ? '' : 'WHERE r.archived_at IS NULL'}

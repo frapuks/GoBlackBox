@@ -52,19 +52,30 @@ export const RulesPage = () => {
   const [editing, setEditing] = useState<DialogTarget>(null)
 
   const me = useMe()
-  const rules = useRules(showArchived)
   const settings = useSettings()
 
   const isStaff = me.data?.user.role === 'ADMIN' || me.data?.user.role === 'MANAGER'
+
+  // Les archivées sont chargées selon le RÔLE, pas selon l'interrupteur : ce
+  // dernier ne fait plus qu'afficher ou masquer. Sans ça, chaque bascule
+  // change la clé de requête, vide la liste le temps du rechargement et fait
+  // sauter tout l'écran. Un joueur ne les reçoit pas du tout.
+  const rules = useRules(isStaff)
 
   // Sections coupées par l'admin : on masque plutôt que de laisser un titre
   // et un bouton pour une fonctionnalité que l'équipe n'utilise pas.
   const showPenalties = settings.data?.enablePenalties !== false
   const showDues = settings.data?.enableDues !== false
 
-  const dues = rules.data?.filter((r) => r.kind === 'DUES') ?? []
-  const penalties = rules.data?.filter((r) => r.kind === 'PENALTY') ?? []
-  const fines = rules.data?.filter((r) => r.kind === 'FINE') ?? []
+  // Les trois sections ne montrent que l'actif, quel que soit l'interrupteur :
+  // une règle archivée n'a rien à faire au milieu de celles qu'on applique.
+  const all = rules.data ?? []
+  const active = all.filter((r) => r.archivedAt === null)
+  const archived = all.filter((r) => r.archivedAt !== null)
+
+  const dues = active.filter((r) => r.kind === 'DUES')
+  const penalties = active.filter((r) => r.kind === 'PENALTY')
+  const fines = active.filter((r) => r.kind === 'FINE')
 
   return (
     <>
@@ -146,17 +157,54 @@ export const RulesPage = () => {
         </Box>
       ))}
 
-      <FormControlLabel
-        sx={{ mt: 2 }}
-        control={
-          <Switch checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
-        }
-        label={
-          <Typography variant="overline" color="text.secondary">
-            Afficher les règles archivées
-          </Typography>
-        }
-      />
+      {/* Consulter l'archive ne concerne que ceux qui peuvent désarchiver. */}
+      {isStaff && (
+        <>
+          <FormControlLabel
+            sx={{ mt: 2 }}
+            control={
+              <Switch checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+            }
+            label={
+              <Typography variant="overline" color="text.secondary">
+                Afficher les règles archivées
+              </Typography>
+            }
+          />
+
+          {/* Toutes sortes confondues, sous l'interrupteur : le contenu
+              n'apparaît qu'en bas de page, donc rien ne bouge au-dessus. Pas de
+              titre — celui de l'interrupteur, juste au-dessus, le dit déjà. */}
+          <Collapse in={showArchived} unmountOnExit>
+            {archived.length === 0 ? (
+              <EmptyState>Aucune règle archivée</EmptyState>
+            ) : (
+              <Stack spacing={1} sx={{ mt: 1 }}>
+                {archived.map((r) =>
+                  r.kind === 'FINE' ? (
+                    <RuleCard
+                      key={r.id}
+                      rule={r}
+                      action={
+                        <IconButton size="small" aria-label="Modifier" onClick={() => setEditing(r)}>
+                          <EditOutlinedIcon fontSize="small" />
+                        </IconButton>
+                      }
+                    />
+                  ) : (
+                    <ApplyRuleCard
+                      key={r.id}
+                      rule={r}
+                      isStaff={isStaff}
+                      onEdit={() => setEditing(r)}
+                    />
+                  ),
+                )}
+              </Stack>
+            )}
+          </Collapse>
+        </>
+      )}
 
       <RuleDialog target={editing} onClose={() => setEditing(null)} />
     </>
