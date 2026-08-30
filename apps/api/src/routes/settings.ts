@@ -29,18 +29,37 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     enable_penalties: boolean
     enable_dues: boolean
     invite_code: string
+    // `DATE` en base : le driver pg en fait un objet Date à minuit local. On
+    // ne le convertit jamais en ISO complet, ce qui décalerait d'un jour selon
+    // le fuseau — la colonne ne porte qu'une date civile.
+    end_date: Date | null
+    usage_start_date: Date | null
+    usage_end_date: Date | null
   }
 
+  const COLUMNS =
+    'late_after_days, allow_player_reports, enable_penalties, enable_dues, invite_code, ' +
+    'end_date, usage_start_date, usage_end_date'
+
+  /** « 2027-05-31 », dans le fuseau local — jamais toISOString(). */
+  const toDay = (d: Date | null): string | null =>
+    d === null
+      ? null
+      : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+          d.getDate(),
+        ).padStart(2, '0')}`
+
   app.get('/settings', auth, async (req): Promise<Settings> => {
-    const row = await queryOne<SettingsRow>(
-      'SELECT late_after_days, allow_player_reports, enable_penalties, enable_dues, invite_code FROM settings WHERE id = 1',
-    )
+    const row = await queryOne<SettingsRow>(`SELECT ${COLUMNS} FROM settings WHERE id = 1`)
 
     const base: Settings = {
       lateAfterDays: row!.late_after_days,
       allowPlayerReports: row!.allow_player_reports,
       enablePenalties: row!.enable_penalties,
       enableDues: row!.enable_dues,
+      endDate: toDay(row!.end_date),
+      usageStartDate: toDay(row!.usage_start_date),
+      usageEndDate: toDay(row!.usage_end_date),
     }
 
     // Les gestionnaires distribuent le code au même titre que l'admin.
@@ -49,8 +68,7 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     return isStaff ? { ...base, inviteCode: row!.invite_code } : base
   })
 
-  const RETURNING =
-    'RETURNING late_after_days, allow_player_reports, enable_penalties, enable_dues, invite_code'
+  const RETURNING = `RETURNING ${COLUMNS}`
 
   const toSettings = (row: SettingsRow): Settings => ({
     lateAfterDays: row.late_after_days,
@@ -58,16 +76,64 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     enablePenalties: row.enable_penalties,
     enableDues: row.enable_dues,
     inviteCode: row.invite_code,
+    endDate: toDay(row.end_date),
+    usageStartDate: toDay(row.usage_start_date),
+    usageEndDate: toDay(row.usage_end_date),
   })
 
-  /** Réglage du quotidien : un gestionnaire ajuste le délai comme il ajuste les règles. */
+  /**
+   * Réglages du quotidien : un gestionnaire ajuste le délai et les dates comme
+   * il ajuste les règles.
+   *
+   * Les dates sont purement indicatives — aucune ne ferme la caisse ni ne
+   * bloque quoi que ce soit.
+   */
   app.patch('/settings', staff, async (req): Promise<Settings> => {
     const body = updateSettingsInput.parse(req.body)
 
+    // La cohérence de la plage porte sur l'état APRÈS fusion : envoyer une
+    // seule des deux dates est légitime, encore faut-il valider le résultat et
+    // non le fragment reçu. La table ne fait qu'une ligne, la lecture est
+    // gratuite — et le message reste lisible, là où la contrainte SQL
+    // remonterait une erreur de base brute.
+    const current = await queryOne<SettingsRow>(`SELECT ${COLUMNS} FROM settings WHERE id = 1`)
+    const pick = <K extends 'endDate' | 'usageStartDate' | 'usageEndDate'>(
+      key: K,
+      fallback: Date | null,
+    ) => (body[key] === undefined ? toDay(fallback) : body[key]!)
+
+    const usageStart = pick('usageStartDate', current!.usage_start_date)
+    const usageEnd = pick('usageEndDate', current!.usage_end_date)
+
+    if (usageEnd !== null) {
+      if (usageStart === null) {
+        throw app.httpErrors.badRequest(
+          'Une fin d’utilisation exige une date de début',
+        )
+      }
+      if (usageEnd < usageStart) {
+        throw app.httpErrors.badRequest('La fin d’utilisation doit suivre le début')
+      }
+    }
+
     const row = await queryOne<SettingsRow>(
-      `UPDATE settings SET late_after_days = COALESCE($1, late_after_days)
+      `UPDATE settings
+          SET late_after_days  = COALESCE($1, late_after_days),
+              end_date         = CASE WHEN $2::boolean THEN $3::date ELSE end_date END,
+              usage_start_date = CASE WHEN $4::boolean THEN $5::date ELSE usage_start_date END,
+              usage_end_date   = CASE WHEN $6::boolean THEN $7::date ELSE usage_end_date END
         WHERE id = 1 ${RETURNING}`,
-      [body.lateAfterDays ?? null],
+      [
+        body.lateAfterDays ?? null,
+        // COALESCE ne suffit pas pour les dates : il confondrait « efface » et
+        // « ne touche pas », qui arrivent tous deux en NULL.
+        body.endDate !== undefined,
+        body.endDate ?? null,
+        body.usageStartDate !== undefined,
+        body.usageStartDate ?? null,
+        body.usageEndDate !== undefined,
+        body.usageEndDate ?? null,
+      ],
     )
 
     // Changer lateAfterDays reclasse instantanément tout l'historique,

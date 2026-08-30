@@ -230,7 +230,15 @@ export const useUpdateRole = () =>
   )
 
 export const useUpdateSettings = () =>
-  useDataMutation((v: { lateAfterDays?: number }) => patch<Settings>('/settings', v))
+  useDataMutation(
+    (v: {
+      lateAfterDays?: number
+      // `null` efface la date, absent la laisse inchangée.
+      endDate?: string | null
+      usageStartDate?: string | null
+      usageEndDate?: string | null
+    }) => patch<Settings>('/settings', v),
+  )
 
 /** Interrupteurs de fonctionnalité : route distincte, réservée à l'admin. */
 export const useUpdateFeatures = () =>

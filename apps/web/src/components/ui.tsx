@@ -152,3 +152,27 @@ export const formatAgo = (iso: string) => {
   if (days < 7) return new Date(iso).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })
   return formatDate(iso)
 }
+
+/**
+ * Date civile « AAAA-MM-JJ » — celle des réglages de la caisse.
+ *
+ * Découpée à la main plutôt que passée à `new Date(iso)` : ce dernier lit une
+ * chaîne de ce format comme du UTC, donc affiche la veille dans tout fuseau
+ * négatif. Ici on construit une date locale, le jour reste celui qui a été saisi.
+ */
+export const formatDay = (day: string) => {
+  const [y, m, d] = day.split('-').map(Number)
+  return new Date(y!, m! - 1, d!).toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+/** « 12 juin 2027 » sur un jour, « 12 – 13 juin 2027 » sur un week-end. */
+export const formatDayRange = (start: string, end: string | null) => {
+  if (!end) return formatDay(start)
+  // Même mois : le répéter des deux côtés alourdit sans rien apprendre.
+  const sameMonth = start.slice(0, 7) === end.slice(0, 7)
+  return sameMonth ? `${Number(start.slice(8))} – ${formatDay(end)}` : `${formatDay(start)} – ${formatDay(end)}`
+}

@@ -99,6 +99,7 @@ fines     id, member_id, rule_id, amount, label,
           created_by, created_at, paid_at
 
 settings  id = 1 (CHECK), invite_code,
+          end_date, usage_start_date, usage_end_date  -- voir § 15
           allow_player_reports, enable_penalties, enable_dues,
           late_after_days INTEGER NOT NULL DEFAULT 7 CHECK (> 0)
           -- pas de notion de saison dans l'app
@@ -162,6 +163,7 @@ Changer `late_after_days` reclasse instantanément tout l'historique. C'est voul
 | Créer / archiver une règle ou une cotisation | ✅ | ✅ | ❌ |
 | Appliquer une cotisation / une pénalité | ✅ | ✅ | ❌ |
 | Modifier `late_after_days` | ✅ | ✅ | ❌ |
+| Modifier les dates de la caisse | ✅ | ✅ | ❌ |
 | Voir et copier le code d invitation | ✅ | ✅ | ❌ |
 | **Ajouter** un participant | ✅ | ❌ | ❌ |
 | **Régénérer** le code d invitation | ✅ | ❌ | ❌ |
@@ -232,7 +234,7 @@ PATCH  /fines/:id/paid        admin/manager
 PATCH  /me                    displayName, mot de passe
 GET    /settings              tous  → { lateAfterDays }
                               admin → + { inviteCode }
-PATCH  /settings              admin/manager — lateAfterDays
+PATCH  /settings              délai + dates de la caisse — admin/manager
 PATCH  /settings/features     admin — pénalités, cotisations, signalements
 POST   /settings/invite-code  admin — renouvelle le code
 ```
@@ -649,3 +651,59 @@ l'utilisateur se déconnecterait lui-même dans la foulée.
   sortir de l'écran de changement.
 - **Aucune notification** n'est envoyée. La déconnexion de ses appareils est le
   signal, et l'admin est en train de lui parler.
+
+---
+
+## 15. Dates de la caisse
+
+Deux informations, affichées sous la cagnotte sur l'écran Classement :
+
+- **`end_date`** — la fin de la caisse. Une seule date.
+- **`usage_start_date` / `usage_end_date`** — quand l'argent collecté est
+  dépensé. Une **plage**, parce qu'on retient souvent un week-end avant de
+  savoir lequel des deux jours sera le bon.
+
+`usage_end_date` à NULL avec un début renseigné = un seul jour. Une seule
+représentation pour ce cas : la contrainte SQL refuse une fin sans début, et une
+plage à l'envers.
+
+Les trois colonnes sont nullables — une caisse qui démarre n'a pas de programme.
+
+Les deux dates se saisissent avec les sélecteurs maison de `DateFields` —
+`DateField` pour un jour, `DateRangeField` pour une période — bâtis sur le même
+calendrier, donc impossibles à faire diverger. Aucun sélecteur natif : leur
+apparence varie d'un système à l'autre et jure avec le reste de l'app.
+
+HTML n'a pas d'input de plage, et le sélecteur de plage de MUI relève de
+l'offre payante. Ni l'un ni l'autre ne peut produire une valeur incohérente, ce
+qui retire toute validation du formulaire.
+
+**Rien n'est bloqué à ces dates.** Passé la fin, on continue de saisir des
+amendes et d'encaisser. Ce sont des repères, pas des verrous, et elles restent
+modifiables : prolonger la caisse ou resserrer le week-end sur un jour est
+prévu, pas exceptionnel.
+
+Lisibles par tous, modifiables par un **gestionnaire** — c'est du quotidien
+d'équipe, au même titre que le délai de retard, donc `PATCH /settings`.
+
+### Effacer ou ne pas toucher
+
+Une date absente du corps de requête et une date mise à `null` veulent dire deux
+choses différentes, et arrivent toutes deux en `NULL` côté SQL. `COALESCE` les
+confondrait et rendrait tout effacement impossible :
+
+```sql
+end_date = CASE WHEN $2::boolean THEN $3::date ELSE end_date END
+```
+
+Le booléen dit « ce champ était présent », la valeur dit quoi écrire.
+
+### La cohérence de la plage se valide après fusion
+
+Elle porte sur l'**état final**, pas sur le fragment reçu : envoyer
+`{"usageEndDate": null}` seul est légitime si un début existe déjà en base. La
+route relit donc la ligne — elle est unique — fusionne, puis valide. Un
+`refine` Zod sur le corps rejetterait à tort ces mises à jour partielles.
+
+La contrainte SQL reste en dernier rempart, mais c'est la route qui produit le
+message lisible.

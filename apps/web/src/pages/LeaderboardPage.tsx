@@ -1,7 +1,16 @@
 import { useNavigate } from 'react-router-dom'
 import { Box, CircularProgress, Stack, Typography } from '@mui/material'
-import { useDashboard } from '../api/hooks'
-import { Amount, Card, EmptyState, Initials, LateBadge, SectionTitle } from '../components/ui'
+import { useDashboard, useSettings } from '../api/hooks'
+import {
+  Amount,
+  Card,
+  EmptyState,
+  Initials,
+  LateBadge,
+  SectionTitle,
+  formatDay,
+  formatDayRange,
+} from '../components/ui'
 import { palette } from '../theme'
 
 /** Podium coloré, neutre au-delà de la 3e place. */
@@ -17,6 +26,7 @@ const rankColor = (rank: number) =>
 export const LeaderboardPage = () => {
   const navigate = useNavigate()
   const { data, isPending } = useDashboard()
+  const settings = useSettings()
 
   if (isPending) return <CircularProgress />
   if (!data) return null
@@ -38,6 +48,25 @@ export const LeaderboardPage = () => {
         <Typography variant="overline" color="text.secondary">
           {data.totalPaid} € encaissés · {data.totalOwed} € en attente
         </Typography>
+
+        {/* Purement informatif : aucune de ces dates ne ferme la caisse ni ne
+            bloque quoi que ce soit. Le bloc disparaît tant que rien n'est
+            renseigné, plutôt que d'afficher des tirets. */}
+        {(settings.data?.endDate || settings.data?.usageStartDate) && (
+          <Stack alignItems="center" spacing={0.25} sx={{ mt: 1.5 }}>
+            {settings.data.endDate && (
+              <Typography variant="caption" color="text.secondary">
+                Fin de la caisse · {formatDay(settings.data.endDate)}
+              </Typography>
+            )}
+            {settings.data.usageStartDate && (
+              <Typography variant="caption" sx={{ color: palette.accentSoft }}>
+                Utilisation ·{' '}
+                {formatDayRange(settings.data.usageStartDate, settings.data.usageEndDate)}
+              </Typography>
+            )}
+          </Stack>
+        )}
       </Stack>
 
       <SectionTitle>Classement</SectionTitle>

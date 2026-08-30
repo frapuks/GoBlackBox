@@ -45,6 +45,7 @@ import {
 import { usePush } from '../api/push'
 import { Card, Initials, SectionTitle } from '../components/ui'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { DateField, DateRangeField } from '../components/DateFields'
 import { palette } from '../theme'
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
@@ -92,6 +93,7 @@ export const SettingsPage = () => {
           {/* Un gestionnaire administre le quotidien : code d'invitation,
               participants. Restent à l'admin seul les deux décisions qui
               engagent l'équipe — les rôles et l'ouverture des signalements. */}
+          <KittyDatesSection />
           <FeaturesSection canEdit={isAdmin} />
           <InviteCodeSection canRegenerate={isAdmin} />
           <MembersSection canManage={isAdmin} />
@@ -248,6 +250,78 @@ const PasswordSection = () => {
           Changer le mot de passe
         </Button>
       </Stack>
+    </Section>
+  )
+}
+
+/**
+ * Dates de la caisse — purement informatives, affichées sur le Classement.
+ *
+ * Aucune ne ferme quoi que ce soit : passé la date de fin, on continue de
+ * saisir des amendes. Elles servent à ce que l'équipe sache où elle va, et
+ * restent modifiables quand le programme se précise.
+ */
+const KittyDatesSection = () => {
+  const settings = useSettings()
+  const updateSettings = useUpdateSettings()
+
+  const [endDate, setEndDate] = useState<string | null>(null)
+  const [usage, setUsage] = useState<{ start: string | null; end: string | null }>({
+    start: null,
+    end: null,
+  })
+
+  useEffect(() => {
+    if (!settings.data) return
+    setEndDate(settings.data.endDate)
+    setUsage({ start: settings.data.usageStartDate, end: settings.data.usageEndDate })
+  }, [settings.data])
+
+  const saved = settings.data
+  const dirty =
+    saved !== undefined &&
+    (endDate !== saved.endDate ||
+      usage.start !== saved.usageStartDate ||
+      usage.end !== saved.usageEndDate)
+
+  return (
+    <Section title="Dates de la caisse">
+      {/* Deux champs bâtis sur le même calendrier : aucun sélecteur natif ici,
+          dont l'apparence varie d'un système à l'autre et jure avec le reste.
+          Ni l'un ni l'autre ne peut produire une valeur incohérente, donc le
+          formulaire n'a rien à valider avant l'envoi. */}
+      <DateField
+        label="Fin de la caisse"
+        helperText="Purement indicatif : rien ne se ferme à cette date"
+        value={endDate}
+        onChange={setEndDate}
+      />
+
+      <DateRangeField
+        label="Utilisation"
+        helperText="Un jour, ou une période — un week-end par exemple"
+        start={usage.start}
+        end={usage.end}
+        onChange={(start, end) => setUsage({ start, end })}
+      />
+
+      <Button
+        variant="contained"
+        disabled={!dirty || updateSettings.isPending}
+        onClick={() =>
+          updateSettings.mutate({
+            // Les trois partent ensemble : le formulaire décrit un état
+            // complet, pas une retouche.
+            endDate,
+            usageStartDate: usage.start,
+            usageEndDate: usage.end,
+          })
+        }
+      >
+        Enregistrer
+      </Button>
+
+      {updateSettings.error && <Alert severity="error">{updateSettings.error.message}</Alert>}
     </Section>
   )
 }

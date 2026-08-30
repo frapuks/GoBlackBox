@@ -241,8 +241,19 @@ export type Fine = {
  * l'admin — deux routes plutôt qu'un contrôle par champ, la garde est alors
  * entièrement portée par le `preHandler`.
  */
+/** Date civile seule, sans heure ni fuseau : « 2027-05-31 ». */
+const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ')
+
 export const updateSettingsInput = z.object({
   lateAfterDays: z.number().int().min(1).max(365).optional(),
+  // `null` efface la date, `undefined` la laisse telle quelle : sans cette
+  // distinction, on ne pourrait jamais revenir en arrière.
+  //
+  // La cohérence de la plage n'est PAS vérifiée ici : elle porte sur l'état
+  // final, que seule la route connaît après fusion avec l'existant.
+  endDate: dateSchema.nullable().optional(),
+  usageStartDate: dateSchema.nullable().optional(),
+  usageEndDate: dateSchema.nullable().optional(),
 })
 
 /** Ce que l'équipe utilise. Activer ou couper engage tout le monde : admin. */
@@ -254,6 +265,17 @@ export const updateFeaturesInput = z.object({
 
 export type Settings = {
   lateAfterDays: number
+  /**
+   * Dates de la caisse, au format « AAAA-MM-JJ ». Purement informatives : rien
+   * n'est bloqué ni fermé quand elles sont dépassées.
+   *
+   * `usageEndDate` à null avec un début renseigné = l'argent se dépense sur un
+   * seul jour ; renseignée, c'est une plage — typiquement un week-end retenu
+   * avant de savoir lequel des deux jours sera le bon.
+   */
+  endDate: string | null
+  usageStartDate: string | null
+  usageEndDate: string | null
   /** Les joueurs peuvent-ils signaler une amende, à valider par un gestionnaire ? */
   allowPlayerReports: boolean
   /** Sections de l'écran Règles que l'équipe utilise réellement. */
