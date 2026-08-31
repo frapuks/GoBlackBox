@@ -1,17 +1,14 @@
-import { useState } from 'react'
 import { Link as RouterLink, useParams } from 'react-router-dom'
 import {
   Chip,
   CircularProgress,
-  FormControlLabel,
   IconButton,
   Stack,
-  Switch,
   Typography,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import SettingsIcon from '@mui/icons-material/Settings'
-import type { MemberDetail } from '@blackbox/shared'
+import type { Fine, MemberDetail } from '@blackbox/shared'
 import { useMember } from '../api/hooks'
 import {
   Amount,
@@ -27,16 +24,57 @@ import {
 import { palette } from '../theme'
 
 /**
+ * Une ligne d'amende, identique dans « Amendes » et dans « Historique ».
+ *
+ * Une payée reste barrée et estompée : dans l'historique le contexte le dit
+ * déjà, mais la même carte apparaît aussi dans la liste du dessus le temps d'un
+ * rafraîchissement, et deux rendus différents pour la même amende se
+ * remarqueraient.
+ */
+const FineRow = ({ fine }: { fine: Fine }) => {
+  const paid = fine.paidAt !== null
+
+  return (
+    <Card
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1.5,
+        opacity: paid ? 0.5 : 1,
+        borderLeft: fine.isLate ? '3px solid ' + palette.danger : '3px solid transparent',
+      }}
+    >
+      <Stack sx={{ flex: 1, minWidth: 0 }}>
+        <Typography variant="caption" sx={{ color: palette.accentSoft }}>
+          {formatDate(fine.createdAt)}
+        </Typography>
+        <Typography
+          sx={{ fontWeight: 600, textDecoration: paid ? 'line-through' : 'none' }}
+          noWrap
+        >
+          {fine.label}
+        </Typography>
+      </Stack>
+
+      <Amount amount={fine.amount} state={fineState(paid, fine.isLate)} />
+
+      <StatusChip state={fineState(paid, fine.isLate)} />
+    </Card>
+  )
+}
+
+/**
  * `/me` et `/members/:id` affichent exactement la même chose : un seul
  * composant, deux routes. Toujours en lecture seule — un joueur ne coche
  * jamais une amende, sinon la caisse ne veut plus rien dire.
  */
 const MemberView = ({ member, title }: { member: MemberDetail; title: string }) => {
-  // Masquées par défaut : ce qui compte au quotidien, c'est ce qui reste à payer.
-  const [showPaid, setShowPaid] = useState(false)
-
-  const paidCount = member.fines.filter((f) => f.paidAt !== null).length
-  const fines = showPaid ? member.fines : member.fines.filter((f) => f.paidAt === null)
+  // Deux sections plutôt qu'un interrupteur : ce qui reste à payer est ce qu'on
+  // vient voir, le reste est consultable sans avoir à le demander. La liste
+  // arrive déjà triée impayées d'abord, puis par date décroissante — filtrer
+  // conserve cet ordre des deux côtés.
+  const unpaid = member.fines.filter((f) => f.paidAt === null)
+  const paid = member.fines.filter((f) => f.paidAt !== null)
 
   return (
     <>
@@ -58,76 +96,31 @@ const MemberView = ({ member, title }: { member: MemberDetail; title: string }) 
         </Stack>
       </Card>
 
-      <Stack
-        direction="row"
-        justifyContent="space-between"
-        alignItems="center"
-        sx={{ mb: 1.5 }}
-      >
-        <SectionTitle sx={{ mb: 0 }}>Amendes</SectionTitle>
-        {/* Au-dessus de la liste : l'interrupteur garde la même place quel que
-            soit le nombre d'amendes affichées, au lieu de sauter à chaque clic. */}
-        {paidCount > 0 && (
-          <FormControlLabel
-            sx={{ mr: 0 }}
-            labelPlacement="start"
-            control={
-              <Switch
-                size="small"
-                checked={showPaid}
-                onChange={(e) => setShowPaid(e.target.checked)}
-                inputProps={{ 'aria-label': 'Afficher les ' + paidCount + ' amendes payées' }}
-              />
-            }
-            label={
-              <Typography variant="overline" color="text.secondary">
-                Payées ({paidCount})
-              </Typography>
-            }
-          />
-        )}
-      </Stack>
+      <SectionTitle>Amendes</SectionTitle>
 
-      {fines.length === 0 && (
+      {unpaid.length === 0 && (
         <EmptyState>
           {member.fines.length === 0 ? 'Aucune amende. Bravo.' : 'Tout est payé. Bravo.'}
         </EmptyState>
       )}
 
       <Stack spacing={1}>
-        {fines.map((f) => {
-          const paid = f.paidAt !== null
-          return (
-            <Card
-              key={f.id}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1.5,
-                opacity: paid ? 0.5 : 1,
-                borderLeft: f.isLate ? '3px solid ' + palette.danger : '3px solid transparent',
-              }}
-            >
-              <Stack sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="caption" sx={{ color: palette.accentSoft }}>
-                  {formatDate(f.createdAt)}
-                </Typography>
-                <Typography
-                  sx={{ fontWeight: 600, textDecoration: paid ? 'line-through' : 'none' }}
-                  noWrap
-                >
-                  {f.label}
-                </Typography>
-              </Stack>
-
-              <Amount amount={f.amount} state={fineState(paid, f.isLate)} />
-
-              <StatusChip state={fineState(paid, f.isLate)} />
-            </Card>
-          )
-        })}
+        {unpaid.map((f) => (
+          <FineRow key={f.id} fine={f} />
+        ))}
       </Stack>
 
+      {/* Pas de section vide : sans rien de payé, il n'y a pas d'historique. */}
+      {paid.length > 0 && (
+        <>
+          <SectionTitle sx={{ mt: 4 }}>Historique</SectionTitle>
+          <Stack spacing={1}>
+            {paid.map((f) => (
+              <FineRow key={f.id} fine={f} />
+            ))}
+          </Stack>
+        </>
+      )}
     </>
   )
 }
