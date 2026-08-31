@@ -707,3 +707,79 @@ route relit donc la ligne — elle est unique — fusionne, puis valide. Un
 
 La contrainte SQL reste en dernier rempart, mais c'est la route qui produit le
 message lisible.
+
+---
+
+## 16. Graphique d'évolution et prévision
+
+Sur l'écran Classement, entre les totaux et le classement : trait plein sur
+l'historique, pointillé sur l'estimation. Une seule série, donc pas de légende —
+et **pas de seconde couleur** : passé et projection sont la même grandeur, ils se
+distinguent par la texture. Corollaire, les filets de grille restent pleins, le
+pointillé signifiant « estimation » dans ce graphique.
+
+`GET /dashboard/history` renvoie les points **et** la projection. Cette dernière
+est calculée côté serveur : elle a besoin des règles de cotisation, de l'effectif
+`receives_fines` et de l'interrupteur `enable_dues` — le front n'aurait pas de
+raison de réunir tout ça, ni de dupliquer la règle « qui paie une cotisation ».
+
+### Ne pas estimer ce qu'on sait déjà
+
+```
+prévision = montant actuel
+          + cotisations restantes   ← COMPTÉ  : nb de 1ers × montant × effectif
+          + amendes à venir         ← ESTIMÉ  : rythme depuis le début
+```
+
+Une cotisation est un **escalier**, pas une pente. La moyenner en euros par jour
+transforme une donnée exacte en approximation — et, en fin de saison, projette
+des cotisations qui ne tomberont plus.
+
+Le terme estimé se calcule donc sur les amendes **hors cotisations**
+(`rules.kind <> 'DUES'`). Sans quoi elles compteraient deux fois : lissées dans
+le rythme, puis comptées à leur date.
+
+### Une droite, un calcul par marches
+
+Le chemin réel est un escalier : les cotisations tombent d'un coup le 1er. Le
+graphique le relie pourtant par une **droite** — le dessiner en marches encombre
+la lecture sans rien apprendre, et le point d'arrivée, lui, reste calculé
+cotisation par cotisation. La simplification porte sur le chemin, jamais sur la
+destination.
+
+L'API ne renvoie donc que les deux extrémités.
+
+### Ce que ça corrige, mesuré
+
+Saison type — 5 €/jour d'amendes, 340 € de cotisation chaque 1er, fin au 31 mai :
+
+| Moment | Réel | Décomposé | Rythme unique sur 6 semaines |
+|---|---|---|---|
+| octobre | 4 425 € | 4 451 € (+0,6 %) | 3 891 € (**−12,1 %**) |
+| janvier | 4 425 € | 4 430 € (+0,1 %) | 4 166 € (−5,9 %) |
+| mars | 4 425 € | 4 427 € (0,0 %) | 4 368 € (−1,3 %) |
+| **mai, dernier mois** | 4 425 € | 4 425 € (0,0 %) | 4 765 € (**+7,7 %**) |
+
+L'ancienne méthode sous-estimait toute la saison puis **surestimait d'une
+cotisation fantôme** le dernier mois. Le biais disparaît **sans aucun cas
+particulier** : en avril il reste un 1er mai, en mai il n'en reste aucun, et la
+fenêtre de rythme ne contient plus jamais de cotisation.
+
+### Choix et limites
+
+- **Rythme depuis le début**, pas sur une fenêtre glissante. Débarrassé des
+  cotisations, il ne reste que les amendes de match : six semaines prises
+  pendant les fêtes liraient presque zéro et sous-estimeraient le printemps. La
+  réactivité utile est portée par le terme exact.
+- **Les pénalités de retard comptent comme des amendes ordinaires.**
+- **Le 1er du mois est codé en dur.** Rien dans l'app ne l'automatise ni ne
+  l'enregistre : c'est une habitude de l'équipe. Un mois oublié fait
+  surestimer.
+- **Pas de projection** sans date de fin à venir, ni en dessous de 21 jours
+  d'historique et 5 jours actifs — quinze jours extrapolés sur une saison
+  donnent un nombre arbitraire que quelqu'un finira par citer.
+- **Le jour de référence vient de PostgreSQL** en `Europe/Paris`, comme les
+  amendes. L'horloge du conteneur ne doit pas pouvoir décaler la prévision.
+
+L'arithmétique des jours vit dans `packages/shared` : serveur et front la
+partagent, deux implémentations finiraient par diverger d'un jour.

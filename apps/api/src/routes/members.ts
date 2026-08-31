@@ -6,9 +6,12 @@ import {
   type Dashboard,
   type MemberDetail,
   type MemberSummary,
+  type PotHistory,
+  type PotHistoryPoint,
   type ResetPasswordResult,
 } from '@blackbox/shared'
 import { generateTemporaryPassword, hashPassword } from '../auth.js'
+import { buildProjection } from '../forecast.js'
 import { query, queryOne } from '../db.js'
 import {
   FINE_SQL,
@@ -40,6 +43,73 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
       totalOwed: members.reduce((sum, m) => sum + m.totalOwed, 0),
       totalPaid: members.reduce((sum, m) => sum + m.totalPaid, 0),
       members,
+    }
+  })
+
+  /**
+   * Évolution de la cagnotte, pour le graphique du Classement.
+   *
+   * Un point par jour où une amende a été validée — entre deux, la courbe est
+   * plate par construction. Sur une saison, quelques centaines de lignes.
+   *
+   * Le cumul est fait en SQL : une fenêtre sur des totaux journaliers déjà
+   * agrégés, donc une seule passe. Et `to_char` plutôt qu'une date renvoyée au
+   * driver, qui la transformerait en objet Date et exposerait au décalage de
+   * fuseau — cette colonne ne porte qu'un jour civil.
+   */
+  app.get('/dashboard/history', auth, async (): Promise<PotHistory> => {
+    const points = await query<PotHistoryPoint>(
+      `SELECT to_char(day, 'YYYY-MM-DD') AS day,
+              SUM(amount) OVER (ORDER BY day)::int AS total
+         FROM (
+           SELECT (created_at AT TIME ZONE 'Europe/Paris')::date AS day,
+                  SUM(amount)                                    AS amount
+             FROM fines
+            WHERE status = 'CONFIRMED'
+            GROUP BY 1
+         ) parjour
+        ORDER BY day`,
+    )
+
+    // Les entrées de la prévision, en une passe. `dues_amount` × `payers`
+    // reproduit exactement ce que crée une application de cotisation — même
+    // effectif ciblé, mêmes règles actives —, donc la prévision ne peut pas
+    // annoncer un montant que le bouton « Appliquer » ne produirait pas.
+    const inputs = await queryOne<{
+      end_date: string | null
+      fines_total: number
+      dues_amount: number
+      payers: number
+      today: string
+    }>(
+      `SELECT to_char(s.end_date, 'YYYY-MM-DD') AS end_date,
+              to_char((NOW() AT TIME ZONE 'Europe/Paris')::date, 'YYYY-MM-DD') AS today,
+              (SELECT COALESCE(SUM(f.amount), 0)::int
+                 FROM fines f
+                 LEFT JOIN rules r ON r.id = f.rule_id
+                WHERE f.status = 'CONFIRMED'
+                  AND (r.kind IS NULL OR r.kind <> 'DUES'))          AS fines_total,
+              (SELECT COALESCE(SUM(r.amount), 0)::int
+                 FROM rules r
+                WHERE r.kind = 'DUES' AND r.archived_at IS NULL
+                  AND s.enable_dues)                                 AS dues_amount,
+              (SELECT COUNT(*)::int FROM members WHERE receives_fines) AS payers
+         FROM settings s
+        WHERE s.id = 1`,
+    )
+
+    return {
+      points,
+      projection: buildProjection({
+        // Le jour vient de PostgreSQL, en Europe/Paris : l'horloge du serveur
+        // et celle des amendes doivent être la même, sinon la prévision décale
+        // d'un jour selon le fuseau du conteneur.
+        today: inputs!.today,
+        endDate: inputs!.end_date,
+        points,
+        finesTotal: inputs!.fines_total,
+        duesPerApplication: inputs!.dues_amount * inputs!.payers,
+      }),
     }
   })
 

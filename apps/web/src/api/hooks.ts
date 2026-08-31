@@ -7,6 +7,7 @@ import type {
   MemberDetail,
   MemberSummary,
   Me,
+  PotHistory,
   ResetPasswordResult,
   Rule,
   RuleContext,
@@ -87,6 +88,13 @@ export const useClaimable = () =>
 
 export const useDashboard = () =>
   useQuery({ queryKey: ['dashboard'], queryFn: () => apiFetch<Dashboard>('/dashboard') })
+
+/** Série temporelle de la cagnotte, pour le graphique du Classement. */
+export const usePotHistory = () =>
+  useQuery({
+    queryKey: ['pot-history'],
+    queryFn: () => apiFetch<PotHistory>('/dashboard/history'),
+  })
 
 export const useMembers = () =>
   useQuery({ queryKey: ['members'], queryFn: () => apiFetch<MemberSummary[]>('/members') })

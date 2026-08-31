@@ -12,6 +12,7 @@ import {
 } from '@mui/material'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import { fromDayKey, toDayKey } from '@blackbox/shared'
 import { formatDay, formatDayRange } from './ui'
 import { palette } from '../theme'
 
@@ -26,14 +27,6 @@ import { palette } from '../theme'
  * de la base et de l'API, et il évite tout décalage de fuseau.
  */
 
-const pad = (n: number) => String(n).padStart(2, '0')
-const toKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-
-const fromKey = (key: string) => {
-  const [y, m, d] = key.split('-').map(Number)
-  return new Date(y!, m! - 1, d!)
-}
-
 /** Lundi en tête, comme un calendrier français. */
 const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const mondayIndex = (d: Date) => (d.getDay() + 6) % 7
@@ -46,7 +39,7 @@ const monthGrid = (month: Date): (string | null)[] => {
   return [
     ...Array<null>(mondayIndex(first)).fill(null),
     ...Array.from({ length: days }, (_, i) =>
-      toKey(new Date(month.getFullYear(), month.getMonth(), i + 1)),
+      toDayKey(new Date(month.getFullYear(), month.getMonth(), i + 1)),
     ),
   ]
 }
@@ -71,14 +64,14 @@ const MonthCalendar = ({
   // La boîte de dialogue démonte son contenu à la fermeture : ce mois est donc
   // recalculé à chaque ouverture, à partir de la sélection courante.
   const [month, setMonth] = useState(() => {
-    const anchor = start ? fromKey(start) : new Date()
+    const anchor = start ? fromDayKey(start) : new Date()
     return new Date(anchor.getFullYear(), anchor.getMonth(), 1)
   })
 
   const shift = (delta: number) =>
     setMonth((m) => new Date(m.getFullYear(), m.getMonth() + delta, 1))
 
-  const today = toKey(new Date())
+  const today = toDayKey(new Date())
 
   return (
     <>

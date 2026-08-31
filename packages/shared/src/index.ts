@@ -110,6 +110,44 @@ export type MemberSummary = {
 
 export type MemberDetail = MemberSummary & { fines: Fine[] }
 
+/**
+ * Un point de l'historique de la cagnotte : le cumul des amendes validées à la
+ * fin de ce jour. Seuls les jours où quelque chose s'est passé sont renvoyés —
+ * entre deux points, le montant n'a pas bougé.
+ */
+export type PotHistoryPoint = { day: string; total: number }
+
+/**
+ * Prévision de fin de caisse, décomposée en deux termes de nature différente.
+ *
+ * `dues` ne s'estime pas : on connaît le montant d'une cotisation, l'effectif
+ * concerné et le nombre de 1ers du mois restants. `fines` est la seule part
+ * réellement estimée, au rythme observé depuis le début.
+ *
+ * Séparer les deux règle au passage le biais de fin de saison : la fenêtre de
+ * rythme ne contient plus aucune cotisation, elle ne peut donc plus en
+ * projeter là où il n'en tombera plus.
+ *
+ * Seules les deux extrémités sont renvoyées : le graphique relie le montant
+ * d'aujourd'hui à celui de la fin par une droite. Le chemin réel est un
+ * escalier — les cotisations tombent d'un coup le 1er — mais le tracer ainsi
+ * alourdit la lecture sans rien apprendre, et la destination reste exacte.
+ */
+export type PotProjection = {
+  /** Aujourd'hui, selon l'horloge du serveur — la même que celle des amendes. */
+  startDay: string
+  endDay: string
+  total: number
+  dues: number
+  fines: number
+}
+
+export type PotHistory = {
+  points: PotHistoryPoint[]
+  /** null quand l'historique est trop court, ou sans date de fin à venir. */
+  projection: PotProjection | null
+}
+
 // ---------------------------------------------------------------- règles
 
 /**
@@ -316,3 +354,60 @@ export const pushSubscriptionInput = z.object({
 
 /** `enabled: false` = serveur sans clés VAPID, le front masque l'interrupteur. */
 export type PushConfig = { enabled: boolean; publicKey: string | null }
+
+// ---------------------------------------------------------------- jours civils
+
+/**
+ * Jour civil « AAAA-MM-JJ ». Ce format circule partout — base, API, réglages —
+ * et se compare directement en chaîne, l'ordre lexicographique étant l'ordre
+ * chronologique.
+ *
+ * Ici et non côté front : la prévision se calcule sur le serveur, qui a besoin
+ * de la même arithmétique. Deux implémentations finiraient par diverger d'un
+ * jour, et personne ne verrait où.
+ *
+ * Les conversions passent toujours par une date LOCALE : lue en UTC, une chaîne
+ * de ce format désigne la veille dans tout fuseau négatif.
+ */
+const pad = (n: number) => String(n).padStart(2, '0')
+
+export const toDayKey = (d: Date) =>
+  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+
+export const fromDayKey = (key: string) => {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Date(y!, m! - 1, d!)
+}
+
+export const todayKey = () => toDayKey(new Date())
+
+export const addDays = (key: string, days: number) => {
+  const d = fromDayKey(key)
+  d.setDate(d.getDate() + days)
+  return toDayKey(d)
+}
+
+/** Nombre de jours de `from` à `to`, négatif si `to` précède. */
+export const daysBetween = (from: string, to: string) =>
+  Math.round((fromDayKey(to).getTime() - fromDayKey(from).getTime()) / 86_400_000)
+
+/**
+ * Les 1ers du mois strictement après `after`, jusqu'à `until` inclus.
+ *
+ * C'est la date à laquelle l'équipe applique sa cotisation. Codée en dur pour
+ * l'instant : rien dans l'app ne l'automatise ni ne l'enregistre, c'est une
+ * habitude. Un mois oublié fera donc surestimer.
+ */
+export const monthStartsBetween = (after: string, until: string): string[] => {
+  const days: string[] = []
+  const d = fromDayKey(after)
+  // Le 1er du mois suivant : si `after` EST un 1er, on ne le recompte pas —
+  // la cotisation du jour est soit déjà dans l'historique, soit imminente.
+  let cursor = new Date(d.getFullYear(), d.getMonth() + 1, 1)
+
+  while (toDayKey(cursor) <= until) {
+    days.push(toDayKey(cursor))
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
+  }
+  return days
+}

@@ -1,5 +1,6 @@
 import { Avatar, Box, Chip, Stack, Typography } from '@mui/material'
 import type { SxProps } from '@mui/material'
+import { fromDayKey } from '@blackbox/shared'
 import { fineColor, palette, type FineState } from '../theme'
 
 /** Titre de section : Bebas Neue, capitales, comme sur les maquettes. */
@@ -156,23 +157,23 @@ export const formatAgo = (iso: string) => {
 /**
  * Date civile « AAAA-MM-JJ » — celle des réglages de la caisse.
  *
- * Découpée à la main plutôt que passée à `new Date(iso)` : ce dernier lit une
- * chaîne de ce format comme du UTC, donc affiche la veille dans tout fuseau
- * négatif. Ici on construit une date locale, le jour reste celui qui a été saisi.
+ * L'arithmétique des jours vit dans `@blackbox/shared` : le serveur en a besoin
+ * pour la prévision, et deux implémentations finiraient par diverger d'un jour.
+ * Ne reste ici que la mise en forme, qui est propre au front.
  */
-export const formatDay = (day: string) => {
-  const [y, m, d] = day.split('-').map(Number)
-  return new Date(y!, m! - 1, d!).toLocaleDateString('fr-FR', {
+export const formatDay = (day: string) =>
+  fromDayKey(day).toLocaleDateString('fr-FR', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   })
-}
 
 /** « 12 juin 2027 » sur un jour, « 12 – 13 juin 2027 » sur un week-end. */
 export const formatDayRange = (start: string, end: string | null) => {
   if (!end) return formatDay(start)
   // Même mois : le répéter des deux côtés alourdit sans rien apprendre.
   const sameMonth = start.slice(0, 7) === end.slice(0, 7)
-  return sameMonth ? `${Number(start.slice(8))} – ${formatDay(end)}` : `${formatDay(start)} – ${formatDay(end)}`
+  return sameMonth
+    ? `${Number(start.slice(8))} – ${formatDay(end)}`
+    : `${formatDay(start)} – ${formatDay(end)}`
 }

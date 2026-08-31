@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { Box, CircularProgress, Stack, Typography } from '@mui/material'
-import { useDashboard, useSettings } from '../api/hooks'
+import { useDashboard, usePotHistory, useSettings } from '../api/hooks'
 import {
   Amount,
   Card,
@@ -11,6 +11,7 @@ import {
   formatDay,
   formatDayRange,
 } from '../components/ui'
+import { PotChart } from '../components/PotChart'
 import { palette } from '../theme'
 
 /** Podium coloré, neutre au-delà de la 3e place. */
@@ -27,6 +28,7 @@ export const LeaderboardPage = () => {
   const navigate = useNavigate()
   const { data, isPending } = useDashboard()
   const settings = useSettings()
+  const history = usePotHistory()
 
   if (isPending) return <CircularProgress />
   if (!data) return null
@@ -68,6 +70,11 @@ export const LeaderboardPage = () => {
           </Stack>
         )}
       </Stack>
+
+      <PotChart
+        history={history.data?.points ?? []}
+        projection={history.data?.projection ?? null}
+      />
 
       <SectionTitle>Classement</SectionTitle>
 
