@@ -2,17 +2,17 @@ import { useNavigate } from 'react-router-dom'
 import { Box, CircularProgress, Stack, Typography } from '@mui/material'
 import { useDashboard, usePotHistory, useSettings } from '../api/hooks'
 import {
-  Amount,
   Card,
   EmptyState,
   Initials,
   LateBadge,
+  Score,
   SectionTitle,
   formatDay,
   formatDayRange,
 } from '../components/ui'
 import { PotChart } from '../components/PotChart'
-import { palette } from '../theme'
+import { fineColor, palette } from '../theme'
 
 /** Podium coloré, neutre au-delà de la 3e place. */
 const rankColor = (rank: number) =>
@@ -84,6 +84,7 @@ export const LeaderboardPage = () => {
         {ranked.map((m, i) => {
           const rank = i + 1
           const settled = m.totalOwed === 0
+          const total = m.totalOwed + m.totalPaid
 
           return (
             <Card
@@ -93,7 +94,11 @@ export const LeaderboardPage = () => {
                 alignItems: 'center',
                 gap: 1.5,
                 cursor: 'pointer',
-                opacity: settled ? 0.5 : 1,
+                // Toutes les cartes ont le même fond. L'opacité réduite des
+                // joueurs à jour datait d'un classement par montant dû, où elle
+                // signalait « rien à réclamer » ; au total de saison, elle ne
+                // faisait plus qu'assombrir des lignes au hasard du podium.
+                // Ce qui reste dû se lit sous le nom, en couleur.
                 borderLeft: '3px solid ' + rankColor(rank),
               }}
               onClick={() => navigate('/members/' + m.id)}
@@ -111,19 +116,27 @@ export const LeaderboardPage = () => {
                 <Typography sx={{ fontWeight: 600 }} noWrap>
                   {m.displayName}
                 </Typography>
+                {/* Le détail sous le nom : le gros chiffre étant désormais le
+                    total, il faut bien dire quelque part ce qui reste dû. */}
                 <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
                   <Typography variant="caption" color="text.secondary">
                     {m.totalPaid} € payés
                   </Typography>
+                  {!settled && (
+                    <Typography
+                      variant="caption"
+                      sx={{ color: fineColor(m.hasLate ? 'late' : 'due') }}
+                    >
+                      · {m.totalOwed} € à payer
+                    </Typography>
+                  )}
                   {m.hasLate && <LateBadge />}
                 </Stack>
               </Box>
 
-              <Amount
-                amount={m.totalOwed}
-                state={settled ? 'paid' : m.hasLate ? 'late' : 'due'}
-                size="lg"
-              />
+              {/* Le critère du classement doit être le chiffre qu'on lit, sinon
+                  la liste paraît mal triée. */}
+              <Score amount={total} />
             </Card>
           )
         })}

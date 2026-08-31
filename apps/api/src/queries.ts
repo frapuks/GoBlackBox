@@ -66,6 +66,16 @@ export const MEMBER_SUMMARY_SQL = `
    GROUP BY m.id, u.role
 `
 
+/**
+ * Total des amendes validées d'un membre, payées ou non — le critère du
+ * classement.
+ *
+ * Répété tel quel plutôt que d'écrire `total_owed + total_paid` : PostgreSQL
+ * n'accepte un alias de colonne dans ORDER BY que seul, jamais dans une
+ * expression, et ces deux-là n'existent pas dans les tables sources.
+ */
+export const MEMBER_TOTAL_SQL = `COALESCE(SUM(f.amount) FILTER (WHERE f.status = 'CONFIRMED'), 0)`
+
 export const toMemberSummary = (r: MemberSummaryRow): MemberSummary => ({
   id: r.id,
   displayName: r.display_name,

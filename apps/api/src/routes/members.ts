@@ -16,6 +16,7 @@ import { query, queryOne } from '../db.js'
 import {
   FINE_SQL,
   MEMBER_SUMMARY_SQL,
+  MEMBER_TOTAL_SQL,
   toFine,
   toMemberSummary,
   type FineRow,
@@ -28,10 +29,13 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
     preHandler: [app.requireAuth, app.requireMember, app.requireRole('ADMIN')],
   }
 
-  /** Écran Classement : totaux de la caisse + membres triés par montant dû. */
+  /** Écran Classement : totaux de la caisse + membres triés par total d'amendes. */
   app.get('/dashboard', auth, async (): Promise<Dashboard> => {
     const rows = await query<MemberSummaryRow>(
-      `${MEMBER_SUMMARY_SQL} ORDER BY total_owed DESC, m.display_name`,
+      // Classement au total des amendes reçues, payées comprises : c'est le
+      // palmarès de la saison, pas la liste des mauvais payeurs. Régler sa
+      // dette ne fait donc plus reculer dans le classement.
+      `${MEMBER_SUMMARY_SQL} ORDER BY ${MEMBER_TOTAL_SQL} DESC, m.display_name`,
     )
     const settings = await queryOne<{ late_after_days: number }>(
       'SELECT late_after_days FROM settings WHERE id = 1',

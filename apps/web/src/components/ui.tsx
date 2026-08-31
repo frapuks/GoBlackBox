@@ -39,6 +39,29 @@ export const Amount = ({
   </Typography>
 )
 
+/**
+ * Total des amendes d'un joueur sur la saison, payées comprises — le chiffre
+ * du classement.
+ *
+ * Volontairement NEUTRE : dans cette app la couleur ne dit que l'état d'un
+ * paiement, et un cumul de saison n'en a aucun. Le reste à payer, lui, garde sa
+ * couleur là où il est affiché.
+ */
+export const Score = ({ amount }: { amount: number }) => (
+  <Typography
+    sx={{
+      fontFamily: '"Bebas Neue", sans-serif',
+      fontSize: '1.6rem',
+      lineHeight: 1,
+      color: palette.text,
+      whiteSpace: 'nowrap',
+    }}
+  >
+    {amount} €
+  </Typography>
+)
+
+
 /** État d'affichage d'une amende, dérivé une seule fois pour toute l'app. */
 export const fineState = (paid: boolean, isLate: boolean): FineState =>
   paid ? 'paid' : isLate ? 'late' : 'due'
