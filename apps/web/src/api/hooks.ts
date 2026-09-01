@@ -219,6 +219,13 @@ export const useUpdateMember = () =>
     return patch<MemberSummary>(`/members/${id}`, body)
   })
 
+/**
+ * Retire un participant de l'équipe. Le serveur refuse s'il a un compte
+ * rattaché ou la moindre amende — voir la route.
+ */
+export const useDeleteMember = () =>
+  useDataMutation((id: number) => apiFetch<void>(`/members/${id}`, { method: 'DELETE' }))
+
 /** Détache le compte d'un participant : sert à corriger un nom mal réclamé. */
 export const useUnlinkMember = () =>
   useDataMutation((id: number) => post<MemberSummary>(`/members/${id}/unlink`))

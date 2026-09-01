@@ -170,6 +170,52 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
   })
 
   /**
+   * Supprime un participant — uniquement s'il ne laisse rien derrière lui.
+   *
+   * Sert à retirer quelqu'un ajouté par erreur, ou qui n'a jamais joué. Deux
+   * refus, pour deux raisons différentes :
+   *
+   *  - **un compte rattaché** : le supprimer renverrait la personne vers
+   *    « Qui es-tu ? » à sa prochaine ouverture, sans qu'elle comprenne. Il
+   *    faut détacher d'abord, geste qui existe déjà et qui est réversible.
+   *  - **au moins une amende** : `fines.member_id` est en CASCADE, la
+   *    suppression emporterait tout son historique. L'argent déjà encaissé
+   *    sortirait de la cagnotte, qui cesserait de correspondre à la boîte.
+   *    Pour un joueur parti, c'est « Concerné par les amendes » qu'on coupe.
+   */
+  app.delete('/members/:id', adminOnly, async (req, reply) => {
+    const id = parseId(req.params)
+
+    // Conditions dans le WHERE plutôt qu'en test préalable : aucune fenêtre
+    // pendant laquelle une amende pourrait arriver entre les deux.
+    const deleted = await queryOne<{ id: number }>(
+      `DELETE FROM members
+        WHERE id = $1
+          AND user_id IS NULL
+          AND NOT EXISTS (SELECT 1 FROM fines f WHERE f.member_id = members.id)
+        RETURNING id`,
+      [id],
+    )
+    if (deleted) return reply.code(204).send()
+
+    // Rien supprimé : on relit pour dire POURQUOI. Un message générique
+    // laisserait l'admin sans la marche à suivre.
+    const row = await queryOne<{ user_id: number | null; fines: number }>(
+      `SELECT user_id,
+              (SELECT COUNT(*)::int FROM fines f WHERE f.member_id = m.id) AS fines
+         FROM members m WHERE id = $1`,
+      [id],
+    )
+    if (!row) throw app.httpErrors.notFound('Participant introuvable')
+    if (row.user_id !== null) {
+      throw app.httpErrors.badRequest('Détache d’abord le compte rattaché')
+    }
+    throw app.httpErrors.badRequest(
+      'Ce participant a des amendes : coupe « Concerné par les amendes » plutôt que de le supprimer',
+    )
+  })
+
+  /**
    * Détache le compte du participant.
    *
    * Sert à rattraper l'erreur d'un joueur qui, à l'inscription, a réclamé le

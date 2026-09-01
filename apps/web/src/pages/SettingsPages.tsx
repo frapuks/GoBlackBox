@@ -21,6 +21,7 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import AddIcon from '@mui/icons-material/Add'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import LinkOffIcon from '@mui/icons-material/LinkOff'
 import LockResetIcon from '@mui/icons-material/LockReset'
@@ -29,6 +30,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CheckIcon from '@mui/icons-material/Check'
 import {
   useCreateMember,
+  useDeleteMember,
   useLogout,
   useMe,
   useMembers,
@@ -558,10 +560,12 @@ const MemberDialog = ({
   const updateMember = useUpdateMember()
   const updateRole = useUpdateRole()
   const unlink = useUnlinkMember()
+  const deleteMember = useDeleteMember()
   const [name, setName] = useState('')
   const [role, setRole] = useState<'PLAYER' | 'MANAGER'>('PLAYER')
   const [receivesFines, setReceivesFines] = useState(true)
   const [unlinking, setUnlinking] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const [resetting, setResetting] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -670,6 +674,37 @@ const MemberDialog = ({
                 </Button>
               </Stack>
             )}
+
+            {/* Réservé aux participants sans compte : supprimer celui de
+                quelqu'un d'inscrit le renverrait vers « Qui es-tu ? » sans
+                explication. Le détachement vient d'abord. */}
+            {!linked && (
+              <Stack spacing={0.5}>
+                <Typography variant="overline" color="text.secondary">
+                  Retirer de l&apos;équipe
+                </Typography>
+                <Button
+                  color="error"
+                  variant="outlined"
+                  startIcon={<DeleteOutlineIcon />}
+                  disabled={member.hasFines}
+                  onClick={() => setRemoving(true)}
+                >
+                  Supprimer le participant
+                </Button>
+                {/* Le bouton est inerte : sans un mot, on ne saurait pas
+                    pourquoi, ni quoi faire à la place. */}
+                {member.hasFines && (
+                  <Typography variant="caption" color="text.secondary">
+                    Ses amendes font partie de la caisse. Coupe plutôt
+                    &nbsp;« Concerné par les amendes ».
+                  </Typography>
+                )}
+                {deleteMember.error && (
+                  <Alert severity="error">{deleteMember.error.message}</Alert>
+                )}
+              </Stack>
+            )}
           </Stack>
         </DialogContent>
 
@@ -680,6 +715,29 @@ const MemberDialog = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={removing}
+        title="Supprimer ce participant ?"
+        confirmLabel="Supprimer"
+        danger
+        pending={deleteMember.isPending}
+        onClose={() => setRemoving(false)}
+        onConfirm={() =>
+          deleteMember.mutate(member.id, {
+            onSuccess: () => {
+              setRemoving(false)
+              onClose()
+            },
+          })
+        }
+      >
+        <Typography variant="body2" color="text.secondary">
+          {member.displayName} disparaîtra de la liste et du sélecteur d&apos;amende. Il
+          n&apos;a aucune amende, donc rien d&apos;autre n&apos;est touché — mais
+          l&apos;opération est définitive.
+        </Typography>
+      </ConfirmDialog>
 
       <ResetPasswordDialog
         member={member}
