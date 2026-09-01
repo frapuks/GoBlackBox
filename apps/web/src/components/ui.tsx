@@ -1,6 +1,7 @@
 import { Avatar, Box, Chip, Stack, Typography } from '@mui/material'
 import type { SxProps } from '@mui/material'
 import { fromDayKey } from '@blackbox/shared'
+import { BADGES, type BadgeId } from './badges'
 import { fineColor, palette, type FineState } from '../theme'
 
 /** Titre de section : Bebas Neue, capitales, comme sur les maquettes. */
@@ -65,6 +66,53 @@ export const Score = ({ amount }: { amount: number }) => (
 /** État d'affichage d'une amende, dérivé une seule fois pour toute l'app. */
 export const fineState = (paid: boolean, isLate: boolean): FineState =>
   paid ? 'paid' : isLate ? 'late' : 'due'
+
+/**
+ * Nom d'un participant, suivi de ses distinctions.
+ *
+ * Passer par un composant plutôt que par un `Typography` sur chaque écran :
+ * ajouter une icône à un critère ne demande alors de toucher aucun écran.
+ *
+ * Le nom se tronque, jamais les icônes — elles occupent quelques pixels et
+ * disparaîtraient les premières dans une ligne serrée.
+ */
+export const MemberName = ({
+  name,
+  badges = [],
+  noWrap = true,
+  sx,
+}: {
+  name: string
+  badges?: BadgeId[]
+  /**
+   * Faux là où le nom sert à IDENTIFIER quelqu'un plutôt qu'à l'accompagner —
+   * la grille de sélection d'amende. Un nom tronqué y ferait désigner le
+   * mauvais joueur.
+   */
+  noWrap?: boolean
+  sx?: SxProps
+}) => (
+  <Stack direction="row" alignItems="center" sx={{ minWidth: 0 }}>
+    <Typography noWrap={noWrap} sx={{ fontWeight: 600, ...sx }}>
+      {name}
+    </Typography>
+
+    {badges.map((id, i) => {
+      const { icon: Icon, label, color } = BADGES[id]
+      return (
+        <Icon
+          key={i}
+          // Un seul libellé pour le groupe : trois icônes identiques annoncées
+          // trois fois de suite seraient pénibles au lecteur d'écran.
+          titleAccess={i === 0 ? label : undefined}
+          aria-hidden={i > 0}
+          sx={{ flexShrink: 0, fontSize: 15, color, ml: i === 0 ? 0.5 : '-4px' }}
+        />
+      )
+    })}
+  </Stack>
+)
+
 
 /** Pas de photos de profil en V1 : initiales sur fond neutre. */
 export const Initials = ({ name, size = 40 }: { name: string; size?: number }) => {

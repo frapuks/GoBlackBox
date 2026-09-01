@@ -26,11 +26,13 @@ import {
   Amount,
   Card,
   EmptyState,
+  MemberName,
   SectionTitle,
   StatusChip,
   fineState,
   formatAgo,
 } from '../components/ui'
+import { memberBadges } from '../components/badges'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { palette } from '../theme'
 
@@ -62,6 +64,10 @@ export const FeedPage = () => {
   const confirmFine = useConfirmFine()
 
   const isStaff = me.data?.user.role === 'ADMIN' || me.data?.user.role === 'MANAGER'
+
+  // La liste des membres est déjà chargée pour le filtre : les distinctions
+  // n'en coûtent aucune requête de plus.
+  const badges = memberBadges(members.data ?? [])
 
   /**
    * Un joueur peut retirer son propre signalement tant qu'il est en attente.
@@ -141,13 +147,12 @@ export const FeedPage = () => {
               }}
             >
               <Stack sx={{ flex: 1, minWidth: 0 }}>
-                <Stack direction="row" spacing={1} alignItems="baseline">
-                  <Typography
-                    sx={{ fontWeight: 600, textDecoration: paid ? 'line-through' : 'none' }}
-                    noWrap
-                  >
-                    {f.memberName}
-                  </Typography>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <MemberName
+                    name={f.memberName}
+                    badges={badges.get(f.memberId)}
+                    sx={{ textDecoration: paid ? 'line-through' : 'none' }}
+                  />
                   <Typography variant="caption" color="text.secondary" noWrap>
                     {formatAgo(f.createdAt)}
                   </Typography>

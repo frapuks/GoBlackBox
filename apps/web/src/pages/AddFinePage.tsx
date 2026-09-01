@@ -9,7 +9,8 @@ import FitnessCenterIcon from '@mui/icons-material/FitnessCenter'
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
 import { RULE_CONTEXTS, RULE_CONTEXT_LABEL, type RuleContext } from '@blackbox/shared'
 import { useAddFine, useFineEntry, useMembers, useRules, useSettings } from '../api/hooks'
-import { Card, Initials } from '../components/ui'
+import { Card, Initials, MemberName } from '../components/ui'
+import { memberBadges } from '../components/badges'
 import { FAB_OVERFLOW } from '../components/AppLayout'
 import { RuleCard } from '../components/RuleCard'
 import { palette } from '../theme'
@@ -42,6 +43,9 @@ export const AddFinePage = () => {
   // Un gestionnaire non-joueur n'est pas une cible : il ne doit pas apparaître
   // ici, ni être emporté par « Tout sélectionner ».
   const all = (members.data ?? []).filter((m) => m.receivesFines)
+  // Depuis la liste COMPLÈTE : un participant hors amendes peut figurer au
+  // classement s'il a un historique, et décale donc les rangs suivants.
+  const badges = memberBadges(members.data ?? [])
   const allSelected = all.length > 0 && selected.length === all.length
 
   // Seules les règles du contexte choisi sont proposées : c'est tout l'intérêt
@@ -135,9 +139,17 @@ export const AddFinePage = () => {
                   )}
                   <Stack alignItems="center" spacing={1}>
                     <Initials name={m.displayName} size={56} />
-                    <Typography sx={{ fontFamily: '"Bebas Neue", sans-serif', fontSize: '1.3rem' }}>
-                      {m.displayName.toUpperCase()}
-                    </Typography>
+                    <MemberName
+                      name={m.displayName.toUpperCase()}
+                      badges={badges.get(m.id)}
+                      noWrap={false}
+                      sx={{
+                        fontFamily: '"Bebas Neue", sans-serif',
+                        fontSize: '1.3rem',
+                        fontWeight: 400,
+                        textAlign: 'center',
+                      }}
+                    />
                   </Stack>
                 </Card>
               )

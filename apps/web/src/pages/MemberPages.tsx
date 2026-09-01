@@ -1,5 +1,6 @@
 import { Link as RouterLink, useParams } from 'react-router-dom'
 import {
+  Box,
   Chip,
   CircularProgress,
   IconButton,
@@ -9,18 +10,20 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import SettingsIcon from '@mui/icons-material/Settings'
 import type { Fine, MemberDetail } from '@blackbox/shared'
-import { useMember } from '../api/hooks'
+import { useMember, useMembers } from '../api/hooks'
 import {
   Amount,
   Card,
   EmptyState,
   Initials,
   LateBadge,
+  MemberName,
   SectionTitle,
   StatusChip,
   fineState,
   formatDate,
 } from '../components/ui'
+import { memberBadges } from '../components/badges'
 import { palette } from '../theme'
 
 /**
@@ -127,6 +130,9 @@ const MemberView = ({ member, title }: { member: MemberDetail; title: string }) 
 
 export const MePage = () => {
   const { data, isPending } = useMember('me')
+  // Une requête de plus, mais déjà en cache : elle sert au fil, au sélecteur
+  // d'amende et aux réglages.
+  const badges = memberBadges(useMembers().data ?? [])
 
   if (isPending) return <CircularProgress />
   if (!data) return null
@@ -135,9 +141,9 @@ export const MePage = () => {
     <>
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1 }}>
         <Initials name={data.displayName} size={32} />
-        <Typography sx={{ fontWeight: 600, flex: 1 }} noWrap>
-          {data.displayName}
-        </Typography>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <MemberName name={data.displayName} badges={badges.get(data.id)} />
+        </Box>
         <IconButton component={RouterLink} to="/me/settings" aria-label="Réglages">
           <SettingsIcon />
         </IconButton>
@@ -151,6 +157,7 @@ export const MePage = () => {
 export const MemberPage = () => {
   const { id } = useParams()
   const { data, isPending } = useMember(Number(id))
+  const badges = memberBadges(useMembers().data ?? [])
 
   if (isPending) return <CircularProgress />
   if (!data) return null
@@ -162,7 +169,7 @@ export const MemberPage = () => {
           <ArrowBackIcon />
         </IconButton>
         <Initials name={data.displayName} size={32} />
-        <Typography sx={{ fontWeight: 600 }}>{data.displayName}</Typography>
+        <MemberName name={data.displayName} badges={badges.get(data.id)} />
       </Stack>
 
       <MemberView member={data} title="Solde" />

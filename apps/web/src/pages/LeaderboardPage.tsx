@@ -6,11 +6,13 @@ import {
   EmptyState,
   Initials,
   LateBadge,
+  MemberName,
   Score,
   SectionTitle,
   formatDay,
   formatDayRange,
 } from '../components/ui'
+import { memberBadges, rankedMembers } from '../components/badges'
 import { PotChart } from '../components/PotChart'
 import { fineColor, palette } from '../theme'
 
@@ -33,10 +35,10 @@ export const LeaderboardPage = () => {
   if (isPending) return <CircularProgress />
   if (!data) return null
 
-  // Un participant hors amendes n'a rien à faire dans un classement d'amendes —
-  // sauf s'il en a déjà reçu avant d'en être sorti : son historique reste dû, et
-  // le masquer donnerait une cagnotte dont une part n'est attribuée à personne.
-  const ranked = data.members.filter((m) => m.receivesFines || m.hasFines)
+  // Filtre et tri viennent du même endroit que le calcul des distinctions :
+  // impossible que le podium des icônes désigne un autre premier que la liste.
+  const ranked = rankedMembers(data.members)
+  const badges = memberBadges(data.members)
 
   return (
     <>
@@ -113,9 +115,7 @@ export const LeaderboardPage = () => {
               <Initials name={m.displayName} />
 
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography sx={{ fontWeight: 600 }} noWrap>
-                  {m.displayName}
-                </Typography>
+                <MemberName name={m.displayName} badges={badges.get(m.id)} />
                 {/* Le détail sous le nom : le gros chiffre étant désormais le
                     total, il faut bien dire quelque part ce qui reste dû. */}
                 <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
