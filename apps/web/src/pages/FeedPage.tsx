@@ -12,6 +12,7 @@ import {
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import FilterListIcon from '@mui/icons-material/FilterList'
+import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck'
 import type { Fine } from '@blackbox/shared'
 import {
   useConfirmFine,
@@ -41,6 +42,15 @@ import { palette } from '../theme'
 export const FeedPage = () => {
   const [unpaid, setUnpaid] = useState(false)
   const [memberId, setMemberId] = useState<number | ''>('')
+  /**
+   * Mode gestion : les boutons d'action remplacent la pastille d'état.
+   *
+   * Les deux ne cohabitent jamais, donc la ligne ne porte jamais plus d'un
+   * groupe à droite. Sans ça, un gestionnaire se retrouve avec quatre éléments
+   * de largeur fixe qui mangent 240 des 310 pixels de la carte, et le nom comme
+   * la date se retrouvent coupés.
+   */
+  const [managing, setManaging] = useState(false)
   /** Amende dont la suppression attend confirmation. */
   const [deleting, setDeleting] = useState<Fine | null>(null)
 
@@ -62,7 +72,22 @@ export const FeedPage = () => {
 
   return (
     <>
-      <SectionTitle>Fil d&apos;activité</SectionTitle>
+      {/* Sur la ligne du titre et non parmi les filtres : ceux-ci changent ce
+          qu'on VOIT, celui-ci change ce qu'on peut FAIRE. Et il laisse au
+          sélecteur de joueur toute sa largeur. */}
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
+        <SectionTitle sx={{ mb: 0 }}>Fil d&apos;activité</SectionTitle>
+        {isStaff && (
+          <Chip
+            size="small"
+            icon={<PlaylistAddCheckIcon />}
+            label="Gestion"
+            onClick={() => setManaging((v) => !v)}
+            color={managing ? 'primary' : 'default'}
+            variant={managing ? 'filled' : 'outlined'}
+          />
+        )}
+      </Stack>
 
       <Stack direction="row" spacing={1} sx={{ mb: 2 }} alignItems="center">
         <Chip
@@ -134,18 +159,23 @@ export const FeedPage = () => {
 
               <Amount amount={f.amount} state={fineState(paid, f.isLate)} />
 
-              {pending ? (
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  label="À valider"
-                  sx={{ color: palette.accent, borderColor: palette.accent, height: 22 }}
-                />
-              ) : (
-                <StatusChip state={fineState(paid, f.isLate)} />
-              )}
+              {/* Hors gestion, l'état se lit. En gestion, il s'agit — et la
+                  pastille cède la place. L'état reste dit par la couleur du
+                  montant, le liseré, et le barré des payées. */}
+              {!managing &&
+                (pending ? (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label="À valider"
+                    sx={{ color: palette.accent, borderColor: palette.accent, height: 22 }}
+                  />
+                ) : (
+                  <StatusChip state={fineState(paid, f.isLate)} />
+                ))}
 
               {isStaff &&
+                managing &&
                 (pending ? (
                   // Un signalement se valide ou se supprime. Le cocher payé
                   // n'aurait aucun sens tant qu'il n'est pas entériné.
@@ -166,7 +196,9 @@ export const FeedPage = () => {
                   />
                 ))}
 
-              {(isStaff || isMyReport(f)) && (
+              {/* Un joueur garde le retrait de SON signalement sans passer par
+                  un mode qui ne lui est pas proposé. */}
+              {((isStaff && managing) || isMyReport(f)) && (
                 <IconButton
                   size="small"
                   aria-label={isStaff ? 'Supprimer' : 'Annuler mon signalement'}
