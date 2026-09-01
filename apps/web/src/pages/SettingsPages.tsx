@@ -325,14 +325,12 @@ const KittyDatesSection = () => {
           formulaire n'a rien à valider avant l'envoi. */}
       <DateField
         label="Fin de la caisse"
-        helperText="Purement indicatif : rien ne se ferme à cette date"
         value={endDate}
         onChange={setEndDate}
       />
 
       <DateRangeField
         label="Utilisation"
-        helperText="Un jour, ou une période — un week-end par exemple"
         start={usage.start}
         end={usage.end}
         onChange={(start, end) => setUsage({ start, end })}

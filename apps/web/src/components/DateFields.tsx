@@ -31,17 +31,27 @@ import { palette } from '../theme'
 const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const mondayIndex = (d: Date) => (d.getDay() + 6) % 7
 
+/**
+ * Six semaines, toujours. Un mois en occupe quatre à six selon sa longueur et
+ * le jour où il tombe ; laisser la grille suivre ferait changer la hauteur de
+ * la boîte, qui est centrée — donc les flèches de navigation se déplaceraient
+ * sous le doigt d'un mois à l'autre. On complète par des cases vides.
+ */
+const ROWS = 6
+
 /** Les cases du mois, précédées des vides qui alignent le 1er sur son jour. */
 const monthGrid = (month: Date): (string | null)[] => {
   const first = new Date(month.getFullYear(), month.getMonth(), 1)
   const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
 
-  return [
+  const cells: (string | null)[] = [
     ...Array<null>(mondayIndex(first)).fill(null),
     ...Array.from({ length: days }, (_, i) =>
       toDayKey(new Date(month.getFullYear(), month.getMonth(), i + 1)),
     ),
   ]
+
+  return [...cells, ...Array<null>(ROWS * 7 - cells.length).fill(null)]
 }
 
 /**
@@ -99,7 +109,12 @@ const MonthCalendar = ({
         ))}
 
         {monthGrid(month).map((day, i) => {
-          if (day === null) return <Box key={`vide-${i}`} />
+          // `aspectRatio` aussi sur les cases vides : sans hauteur propre, une
+          // ligne entièrement vide s'effondre à zéro et la grille reprend la
+          // hauteur variable qu'on cherchait justement à figer. Le cas ne se
+          // voit que sur la DERNIÈRE ligne — les cases vides du début
+          // cohabitent toujours avec des jours.
+          if (day === null) return <Box key={`vide-${i}`} sx={{ aspectRatio: '1' }} />
 
           const edge = day === start || day === end
           const inside = start !== null && end !== null && day > start && day < end
@@ -138,18 +153,15 @@ const MonthCalendar = ({
  *  griserait le champ et le sortirait du parcours de tabulation. */
 const PickerField = ({
   label,
-  helperText,
   value,
   onOpen,
 }: {
   label: string
-  helperText?: string
   value: string
   onOpen: () => void
 }) => (
   <TextField
     label={label}
-    helperText={helperText}
     value={value}
     placeholder="Aucune date"
     onClick={onOpen}
@@ -185,12 +197,10 @@ const PickerActions = ({
 /** Date seule. */
 export const DateField = ({
   label,
-  helperText,
   value,
   onChange,
 }: {
   label: string
-  helperText?: string
   value: string | null
   onChange: (value: string | null) => void
 }) => {
@@ -206,7 +216,6 @@ export const DateField = ({
     <>
       <PickerField
         label={label}
-        helperText={helperText}
         value={value ? formatDay(value) : ''}
         onOpen={start}
       />
@@ -236,13 +245,11 @@ export const DateField = ({
 /** Période d'un ou plusieurs jours. */
 export const DateRangeField = ({
   label,
-  helperText,
   start,
   end,
   onChange,
 }: {
   label: string
-  helperText?: string
   start: string | null
   /** null avec un début renseigné = un seul jour. */
   end: string | null
@@ -280,7 +287,6 @@ export const DateRangeField = ({
     <>
       <PickerField
         label={label}
-        helperText={helperText}
         value={start ? formatDayRange(start, end) : ''}
         onOpen={begin}
       />
@@ -289,7 +295,14 @@ export const DateRangeField = ({
         <DialogContent>
           <MonthCalendar start={draftStart} end={draftEnd} onPick={pick} />
 
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
+          {/* Hauteur réservée pour deux lignes : l'invite se replie sur un
+              écran étroit, la date choisie tient sur une seule, et la boîte
+              sauterait à la première sélection. */}
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: 'block', mt: 2, minHeight: 40 }}
+          >
             {draftStart === null
               ? 'Choisis un jour, puis un second pour couvrir une période.'
               : formatDayRange(draftStart, draftEnd)}
