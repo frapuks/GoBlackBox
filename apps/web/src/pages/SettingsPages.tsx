@@ -24,6 +24,7 @@ import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import LinkOffIcon from '@mui/icons-material/LinkOff'
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import LockResetIcon from '@mui/icons-material/LockReset'
 import type { MemberSummary } from '@blackbox/shared'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
@@ -82,7 +83,6 @@ export const SettingsPage = () => {
 
       <ProfileSection />
       <NotificationsSection />
-      <PasswordSection />
 
       {isStaff && (
         <>
@@ -111,6 +111,7 @@ const ProfileSection = () => {
   const me = useMe()
   const updateMe = useUpdateMe()
   const [displayName, setDisplayName] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
 
   useEffect(() => {
     if (me.data?.member) setDisplayName(me.data.member.displayName)
@@ -131,6 +132,19 @@ const ProfileSection = () => {
         Enregistrer
       </Button>
       {updateMe.error && <Alert severity="error">{updateMe.error.message}</Alert>}
+
+      {/* En retrait par rapport à « Enregistrer » : deux boutons pleins côte à
+          côte se liraient comme une alternative, alors que celui-ci ouvre un
+          formulaire sans rien enregistrer. */}
+      <Button
+        variant="outlined"
+        startIcon={<LockOutlinedIcon />}
+        onClick={() => setChangingPassword(true)}
+      >
+        Changer le mot de passe
+      </Button>
+
+      <PasswordDialog open={changingPassword} onClose={() => setChangingPassword(false)} />
     </Section>
   )
 }
@@ -185,11 +199,28 @@ const NotificationsSection = () => {
   )
 }
 
-const PasswordSection = () => {
+/**
+ * Changement de mot de passe, en boîte de dialogue.
+ *
+ * Dans une section, ses trois champs occupaient un tiers de l'écran de réglages
+ * pour un geste qu'on fait deux fois par saison. Le formulaire lui-même n'a pas
+ * bougé — ni la confirmation, ni la vérification de l'ancien mot de passe.
+ */
+const PasswordDialog = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
   const updateMe = useUpdateMe()
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
+
+  // Vidé à chaque ouverture : ni les frappes ni l'erreur d'une tentative
+  // abandonnée ne doivent réapparaître à la suivante.
+  useEffect(() => {
+    if (!open) return
+    setCurrentPassword('')
+    setNewPassword('')
+    setConfirmation('')
+    updateMe.reset()
+  }, [open])
 
   const tooShort = newPassword.length > 0 && newPassword.length < 8
   // On n'alerte qu'une fois la confirmation commencée : signaler une
@@ -200,13 +231,16 @@ const PasswordSection = () => {
     currentPassword.length > 0 && newPassword.length >= 8 && confirmation === newPassword
 
   return (
-    <Section title="Mot de passe">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+      <DialogTitle>Changer le mot de passe</DialogTitle>
+
+      <DialogContent>
       {/* Les trois champs réservent la place de leur message d'aide, y compris
           quand ils n'en ont pas : sinon les écarts diffèrent d'un champ à
           l'autre, et l'apparition d'une erreur décale le bouton.
           L'espacement du groupe est réduit d'autant, la place réservée
           faisant déjà office de respiration. */}
-      <Stack spacing={1}>
+      <Stack spacing={1} sx={{ mt: 1 }}>
         <TextField
           label="Mot de passe actuel"
           type="password"
@@ -233,26 +267,23 @@ const PasswordSection = () => {
           error={mismatch}
           helperText={mismatch ? 'Les deux mots de passe ne correspondent pas' : ' '}
         />
+        {updateMe.error && <Alert severity="error">{updateMe.error.message}</Alert>}
+      </Stack>
+      </DialogContent>
+
+      <DialogActions>
+        <Button onClick={onClose}>Annuler</Button>
         <Button
           variant="contained"
           disabled={!valid || updateMe.isPending}
           onClick={() =>
-            updateMe.mutate(
-              { currentPassword, newPassword },
-              {
-                onSuccess: () => {
-                  setCurrentPassword('')
-                  setNewPassword('')
-                  setConfirmation('')
-                },
-              },
-            )
+            updateMe.mutate({ currentPassword, newPassword }, { onSuccess: onClose })
           }
         >
-          Changer le mot de passe
+          Enregistrer
         </Button>
-      </Stack>
-    </Section>
+      </DialogActions>
+    </Dialog>
   )
 }
 
