@@ -82,18 +82,23 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
     // annoncer un montant que le bouton « Appliquer » ne produirait pas.
     const inputs = await queryOne<{
       end_date: string | null
-      fines_total: number
+      fines_window: number
       dues_amount: number
       payers: number
       today: string
     }>(
+      // 28 jours glissants, bornés par la date du jour et non par la dernière
+      // amende : une caisse endormie depuis deux mois doit voir son rythme
+      // retomber à zéro, pas prolonger celui d'un automne révolu.
       `SELECT to_char(s.end_date, 'YYYY-MM-DD') AS end_date,
               to_char((NOW() AT TIME ZONE 'Europe/Paris')::date, 'YYYY-MM-DD') AS today,
               (SELECT COALESCE(SUM(f.amount), 0)::int
                  FROM fines f
                  LEFT JOIN rules r ON r.id = f.rule_id
                 WHERE f.status = 'CONFIRMED'
-                  AND (r.kind IS NULL OR r.kind <> 'DUES'))          AS fines_total,
+                  AND (r.kind IS NULL OR r.kind <> 'DUES')
+                  AND (f.created_at AT TIME ZONE 'Europe/Paris')::date
+                      > (NOW() AT TIME ZONE 'Europe/Paris')::date - 28) AS fines_window,
               (SELECT COALESCE(SUM(r.amount), 0)::int
                  FROM rules r
                 WHERE r.kind = 'DUES' AND r.archived_at IS NULL
@@ -127,7 +132,7 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
         today: inputs!.today,
         endDate: inputs!.end_date,
         points,
-        finesTotal: inputs!.fines_total,
+        finesWindow: inputs!.fines_window,
         duesPerApplication: inputs!.dues_amount * inputs!.payers,
       }),
     }

@@ -767,17 +767,30 @@ fenêtre de rythme ne contient plus jamais de cotisation.
 
 ### Choix et limites
 
-- **Rythme depuis le début**, pas sur une fenêtre glissante. Débarrassé des
-  cotisations, il ne reste que les amendes de match : six semaines prises
-  pendant les fêtes liraient presque zéro et sous-estimeraient le printemps. La
-  réactivité utile est portée par le terme exact.
+- **Rythme sur 28 jours glissants, DÉNOMINATEUR FIXE.** C'est le point
+  délicat : diviser par le temps écoulé depuis la première amende fait exploser
+  l'estimation au démarrage — 90 € au bout de trois jours donnent 30 €/jour,
+  soit 8 100 € sur une saison. Divisé par 28 quoi qu'il arrive, on obtient
+  3,2 €/jour, soit ~870 €. Prudent au début, exact une fois la fenêtre pleine.
+  La fenêtre se termine AUJOURD'HUI et non à la dernière amende : une caisse
+  endormie voit son rythme retomber.
 - **Les pénalités de retard comptent comme des amendes ordinaires.**
 - **Le 1er du mois est codé en dur.** Rien dans l'app ne l'automatise ni ne
   l'enregistre : c'est une habitude de l'équipe. Un mois oublié fait
   surestimer.
-- **Pas de projection** sans date de fin à venir, ni en dessous de 21 jours
-  d'historique et 5 jours actifs — quinze jours extrapolés sur une saison
-  donnent un nombre arbitraire que quelqu'un finira par citer.
+- **Aucun seuil d'historique.** Seule condition : une date de fin à venir. Les
+  cotisations restantes sont exactes dès le premier jour ; les bloquer parce
+  que le terme estimé n'est pas encore fiable reviendrait à jeter une donnée
+  sûre à cause d'une donnée incertaine. Le dénominateur fixe rend le calcul
+  prudent plutôt qu'explosif quand les données sont maigres.
+
+  Montée observée, sur une saison type à 5 €/jour d'amendes :
+
+  | | J+1 | J+7 | J+14 | J+28 | ensuite |
+  |---|---|---|---|---|---|
+  | Écart au réel | −30 % | −23 % | −15 % | **0 %** | 0 % |
+
+  L'estimation **sous-estime** toujours au démarrage, jamais l'inverse.
 - **Le jour de référence vient de PostgreSQL** en `Europe/Paris`, comme les
   amendes. L'horloge du conteneur ne doit pas pouvoir décaler la prévision.
 

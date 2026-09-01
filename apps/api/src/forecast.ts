@@ -12,7 +12,7 @@ import {
  *
  *   prévision = montant actuel
  *             + cotisations restantes   ← compté, pas estimé
- *             + amendes à venir         ← estimé, au rythme depuis le début
+ *             + amendes à venir         ← estimé, au rythme des 4 dernières semaines
  *
  * Une cotisation est un escalier, pas une pente : la moyenner en euros par jour
  * transforme une donnée exacte en approximation, et surtout projette en mai des
@@ -26,13 +26,18 @@ import {
  */
 
 /**
- * En deçà, pas de projection : quinze jours de données extrapolées sur une
- * saison produisent un nombre énorme et arbitraire, que quelqu'un citera.
- * On compte les jours ACTIFS et non les amendes — c'est la régularité d'usage
- * qui rend une moyenne défendable, pas le volume d'un soir de carton rouge.
+ * Fenêtre du rythme des amendes, et surtout DÉNOMINATEUR FIXE.
+ *
+ * Diviser par le temps écoulé depuis la première amende est le piège : trois
+ * jours après un premier carton à 90 €, la moyenne vaut 30 €/jour et projette
+ * 8 100 € sur une saison. Diviser par 28 quoi qu'il arrive donne 3,2 €/jour,
+ * soit ~870 € — prudent au départ, et qui monte à mesure que la fenêtre se
+ * remplit vraiment.
+ *
+ * C'est ce qui permet de se passer de tout seuil minimal : le calcul n'est
+ * plus explosif quand les données sont maigres, il est simplement bas.
  */
-const MIN_SPAN_DAYS = 21
-const MIN_ACTIVE_DAYS = 5
+const RATE_WINDOW_DAYS = 28
 
 export type ForecastInput = {
   today: string
@@ -40,14 +45,15 @@ export type ForecastInput = {
   endDate: string | null
   points: PotHistoryPoint[]
   /**
-   * Cumul des amendes HORS cotisations. C'est la seule base du terme estimé :
-   * y laisser les cotisations reviendrait à les compter deux fois, une fois
-   * lissées dans le rythme et une fois comptées à leur date.
+   * Amendes HORS cotisations tombées sur les `RATE_WINDOW_DAYS` derniers jours.
+   *
+   * Hors cotisations, sans quoi elles compteraient deux fois : une fois lissées
+   * dans le rythme, une fois comptées à leur date.
    *
    * Les pénalités de retard y restent : elles se comportent comme des amendes
    * ordinaires du point de vue de la prévision.
    */
-  finesTotal: number
+  finesWindow: number
   /** Somme encaissée à chaque application : montant des cotisations × effectif concerné. */
   duesPerApplication: number
 }
@@ -56,23 +62,17 @@ export const buildProjection = ({
   today,
   endDate,
   points,
-  finesTotal,
+  finesWindow,
   duesPerApplication,
 }: ForecastInput): PotProjection | null => {
-  if (endDate === null || endDate <= today || points.length < MIN_ACTIVE_DAYS) return null
+  // Seule condition : un horizon. Aucun seuil d'historique — les cotisations
+  // restantes sont exactes dès le premier jour, et les bloquer parce que le
+  // terme estimé n'est pas encore fiable reviendrait à jeter une donnée sûre
+  // à cause d'une donnée incertaine.
+  if (endDate === null || endDate <= today) return null
 
-  const firstDay = points[0]!.day
-  const spanDays = daysBetween(firstDay, today)
-  if (spanDays < MIN_SPAN_DAYS) return null
-
-  const currentTotal = points[points.length - 1]!.total
-
-  // Rythme depuis le début, et non sur une fenêtre glissante : débarrassé des
-  // cotisations, il ne reste que les amendes de match, un signal bien plus
-  // maigre. Six semaines prises pendant les fêtes liraient presque zéro et
-  // sous-estimeraient tout le printemps. La réactivité utile est désormais
-  // portée par le terme exact.
-  const finesPerDay = finesTotal / spanDays
+  const currentTotal = points.length ? points[points.length - 1]!.total : 0
+  const finesPerDay = finesWindow / RATE_WINDOW_DAYS
 
   // Le nombre de 1ers restants, et rien de plus : le graphique relie les deux
   // extrémités par une droite, la position exacte de chaque cotisation dans
