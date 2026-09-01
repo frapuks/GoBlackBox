@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import {
+  addDays,
   createMemberInput,
   updateMemberInput,
   updateRoleInput,
@@ -102,8 +103,23 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
         WHERE s.id = 1`,
     )
 
+    // La cagnotte part de ZÉRO, et la courbe doit le montrer : sans ce point
+    // d'ancrage elle démarre au montant du premier jour, ce qui laisse croire
+    // que l'argent était déjà là.
+    //
+    // C'est aussi ce qui permet d'afficher une évolution dès le premier jour
+    // d'usage : une équipe qui saisit toute sa saison en une soirée n'a qu'un
+    // seul jour actif, donc un point isolé, et le graphique restait masqué.
+    //
+    // Ajouté APRÈS le calcul de la prévision : ce jour sans amende ne doit
+    // compter ni dans les jours actifs, ni dans la durée d'observation du
+    // rythme, sous peine de fausser les deux.
+    const series = points.length
+      ? [{ day: addDays(points[0]!.day, -1), total: 0 }, ...points]
+      : points
+
     return {
-      points,
+      points: series,
       projection: buildProjection({
         // Le jour vient de PostgreSQL, en Europe/Paris : l'horloge du serveur
         // et celle des amendes doivent être la même, sinon la prévision décale
