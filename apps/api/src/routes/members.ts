@@ -12,6 +12,7 @@ import {
   type ResetPasswordResult,
 } from '@blackbox/shared'
 import { generateTemporaryPassword, hashPassword } from '../auth.js'
+import { loadBadges } from '../badges.js'
 import { buildProjection } from '../forecast.js'
 import { query, queryOne } from '../db.js'
 import {
@@ -41,7 +42,7 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
     const settings = await queryOne<{ late_after_days: number }>(
       'SELECT late_after_days FROM settings WHERE id = 1',
     )
-    const members = rows.map(toMemberSummary)
+    const members = await withBadges(rows.map(toMemberSummary))
 
     return {
       lateAfterDays: settings!.late_after_days,
@@ -142,7 +143,7 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
     const rows = await query<MemberSummaryRow>(
       `${MEMBER_SUMMARY_SQL} ORDER BY m.display_name`,
     )
-    return rows.map(toMemberSummary)
+    return withBadges(rows.map(toMemberSummary))
   })
 
   // Ajouter un participant change la composition de l'équipe : administration,
@@ -320,6 +321,12 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
     return { temporaryPassword }
   })
 
+  /** Décerne les badges à une liste de membres déjà chargée. */
+  const withBadges = async (members: MemberSummary[]): Promise<MemberSummary[]> => {
+    const badges = await loadBadges(members)
+    return members.map((m) => ({ ...m, badges: badges.get(m.id) ?? [] }))
+  }
+
   const parseId = (params: unknown): number => {
     const raw = (params as { id?: string }).id
     const id = Number(raw)
@@ -333,7 +340,13 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
       [id],
     )
     if (!row) throw app.httpErrors.notFound('Membre introuvable')
-    return toMemberSummary(row)
+
+    // Un seul membre en sortie, mais le calcul a besoin de TOUS pour savoir qui
+    // est premier et qui est dernier. Deux requêtes de plus sur une route peu
+    // sollicitée, contre une règle dupliquée si on approximait.
+    const all = await query<MemberSummaryRow>(MEMBER_SUMMARY_SQL)
+    const badges = await loadBadges(all.map(toMemberSummary))
+    return { ...toMemberSummary(row), badges: badges.get(id) ?? [] }
   }
 
   const loadMemberDetail = async (id: number): Promise<MemberDetail> => {

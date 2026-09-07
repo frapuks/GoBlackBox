@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { Box, CircularProgress, Stack, Typography } from '@mui/material'
+import { rankedMembers } from '@blackbox/shared'
 import { useDashboard, usePotHistory, useSettings } from '../api/hooks'
 import {
   Card,
@@ -12,7 +13,6 @@ import {
   formatDay,
   formatDayRange,
 } from '../components/ui'
-import { memberBadges, rankedMembers } from '../components/badges'
 import { PotChart } from '../components/PotChart'
 import { fineColor, palette } from '../theme'
 
@@ -38,7 +38,6 @@ export const LeaderboardPage = () => {
   // Filtre et tri viennent du même endroit que le calcul des distinctions :
   // impossible que le podium des icônes désigne un autre premier que la liste.
   const ranked = rankedMembers(data.members)
-  const badges = memberBadges(data.members)
 
   return (
     <>
@@ -115,7 +114,7 @@ export const LeaderboardPage = () => {
               <Initials name={m.displayName} />
 
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <MemberName name={m.displayName} badges={badges.get(m.id)} />
+                <MemberName name={m.displayName} badges={m.badges} />
                 {/* Le détail sous le nom : le gros chiffre étant désormais le
                     total, il faut bien dire quelque part ce qui reste dû. */}
                 <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">

@@ -3,6 +3,7 @@ import {
   createRuleInput,
   updateRuleInput,
   type ApplyRuleResult,
+  type BadgeIcon,
   type Rule,
   type RuleContext,
   type RuleKind,
@@ -19,6 +20,7 @@ type RuleRow = {
   amount: number
   kind: RuleKind
   context: RuleContext
+  badge_icon: BadgeIcon | null
   tiers: RuleTier[]
   archived_at: Date | null
   last_applied_at: Date | null
@@ -31,6 +33,7 @@ const toRule = (r: RuleRow): Rule => ({
   amount: r.amount,
   kind: r.kind,
   context: r.context,
+  badgeIcon: r.badge_icon,
   tiers: r.tiers,
   archivedAt: r.archived_at ? r.archived_at.toISOString() : null,
   lastAppliedAt: r.last_applied_at ? r.last_applied_at.toISOString() : null,
@@ -62,7 +65,7 @@ const replaceTiers = async (
 }
 
 const SELECT = `
-  SELECT r.id, r.label, r.description, r.amount, r.kind, r.context, r.archived_at,
+  SELECT r.id, r.label, r.description, r.amount, r.kind, r.context, r.badge_icon, r.archived_at,
          ${TIERS_SQL} AS tiers,
          (SELECT MAX(f.created_at) FROM fines f WHERE f.rule_id = r.id) AS last_applied_at
     FROM rules r`
@@ -114,10 +117,19 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
 
     const id = await transaction(async (client) => {
       const { rows } = await client.query<{ id: number }>(
-        `INSERT INTO rules (label, description, amount, kind, context)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO rules (label, description, amount, kind, context, badge_icon)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id`,
-        [body.label, body.description ?? null, body.amount, body.kind, body.context],
+        [
+          body.label,
+          body.description ?? null,
+          body.amount,
+          body.kind,
+          body.context,
+          // Une cotisation ou une pénalité tombe sur toute l'équipe le même
+          // jour : son « champion » serait arbitraire, donc pas de badge.
+          body.kind === 'FINE' ? (body.badgeIcon ?? null) : null,
+        ],
       )
       await replaceTiers(client, rows[0]!.id, body.tiers)
       return rows[0]!.id
@@ -142,13 +154,17 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
               description = CASE WHEN $3::boolean THEN $4 ELSE description END,
               amount      = COALESCE($5, amount),
               context     = COALESCE($7, context),
+              -- Comme pour la description : un booléen de présence, sinon
+              -- « retirer l'icône » et « ne pas y toucher » seraient tous deux
+              -- NULL et le retrait deviendrait impossible.
+              badge_icon  = CASE WHEN $8::boolean THEN $9 ELSE badge_icon END,
               archived_at = CASE
                               WHEN $6::boolean IS NULL THEN archived_at
                               WHEN $6::boolean THEN COALESCE(archived_at, NOW())
                               ELSE NULL
                             END
         WHERE id = $1
-        RETURNING id, label, description, amount, kind, context, archived_at,
+        RETURNING id, label, description, amount, kind, context, badge_icon, archived_at,
                   (SELECT MAX(f.created_at) FROM fines f WHERE f.rule_id = rules.id)
                     AS last_applied_at`,
       [
@@ -159,6 +175,8 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
         body.amount ?? null,
         body.archived ?? null,
         body.context ?? null,
+        body.badgeIcon !== undefined,
+        body.badgeIcon ?? null,
       ],
     )
     if (!row) throw app.httpErrors.notFound('Règle introuvable')

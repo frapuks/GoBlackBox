@@ -1,9 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify'
 import {
   updateFeaturesInput,
+  updateBadgesInput,
   updateMeInput,
   updateSettingsInput,
   type Me,
+  type AnyBadgeIcon,
   type Settings,
 } from '@blackbox/shared'
 import { generateInviteCode, hashPassword, verifyPassword } from '../auth.js'
@@ -28,6 +30,9 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     allow_player_reports: boolean
     enable_penalties: boolean
     enable_dues: boolean
+    first_badge_icon: AnyBadgeIcon | null
+    last_badge_icon: AnyBadgeIcon | null
+    first_fine_badge_icon: AnyBadgeIcon | null
     invite_code: string
     // `DATE` en base : le driver pg en fait un objet Date à minuit local. On
     // ne le convertit jamais en ISO complet, ce qui décalerait d'un jour selon
@@ -39,6 +44,7 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
   const COLUMNS =
     'late_after_days, allow_player_reports, enable_penalties, enable_dues, invite_code, ' +
+    'first_badge_icon, last_badge_icon, first_fine_badge_icon, ' +
     'end_date, usage_start_date, usage_end_date'
 
   /** « 2027-05-31 », dans le fuseau local — jamais toISOString(). */
@@ -57,6 +63,9 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
       allowPlayerReports: row!.allow_player_reports,
       enablePenalties: row!.enable_penalties,
       enableDues: row!.enable_dues,
+      firstBadgeIcon: row!.first_badge_icon,
+      lastBadgeIcon: row!.last_badge_icon,
+      firstFineBadgeIcon: row!.first_fine_badge_icon,
       endDate: toDay(row!.end_date),
       usageStartDate: toDay(row!.usage_start_date),
       usageEndDate: toDay(row!.usage_end_date),
@@ -75,6 +84,9 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     allowPlayerReports: row.allow_player_reports,
     enablePenalties: row.enable_penalties,
     enableDues: row.enable_dues,
+    firstBadgeIcon: row.first_badge_icon,
+    lastBadgeIcon: row.last_badge_icon,
+    firstFineBadgeIcon: row.first_fine_badge_icon,
     inviteCode: row.invite_code,
     endDate: toDay(row.end_date),
     usageStartDate: toDay(row.usage_start_date),
@@ -158,6 +170,41 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
         body.allowPlayerReports ?? null,
         body.enablePenalties ?? null,
         body.enableDues ?? null,
+      ],
+    )
+
+    return toSettings(row!)
+  })
+
+  /**
+   * Icônes des deux distinctions du classement.
+   *
+   * Route à part plutôt qu'ajoutée aux fonctionnalités : celles-ci sont des
+   * interrupteurs qui allument ou éteignent des pans entiers de l'app, ceux-ci
+   * ne changent qu'un dessin. Les confondre rendrait la première illisible.
+   *
+   * `null` retire le badge — la façon la plus simple d'éteindre une distinction
+   * sans ajouter un interrupteur de plus.
+   */
+  app.patch('/settings/badges', adminOnly, async (req): Promise<Settings> => {
+    const body = updateBadgesInput.parse(req.body)
+
+    const row = await queryOne<SettingsRow>(
+      // Booléen de présence, comme pour les dates : « retirer l'icône » et
+      // « ne pas y toucher » arrivent tous deux en NULL.
+      `UPDATE settings
+          SET first_badge_icon      = CASE WHEN $1::boolean THEN $2 ELSE first_badge_icon END,
+              last_badge_icon       = CASE WHEN $3::boolean THEN $4 ELSE last_badge_icon END,
+              first_fine_badge_icon =
+                CASE WHEN $5::boolean THEN $6 ELSE first_fine_badge_icon END
+        WHERE id = 1 ${RETURNING}`,
+      [
+        body.firstBadgeIcon !== undefined,
+        body.firstBadgeIcon ?? null,
+        body.lastBadgeIcon !== undefined,
+        body.lastBadgeIcon ?? null,
+        body.firstFineBadgeIcon !== undefined,
+        body.firstFineBadgeIcon ?? null,
       ],
     )
 

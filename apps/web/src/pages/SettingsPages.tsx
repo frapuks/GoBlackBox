@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
 import {
   Alert,
+  Box,
   Button,
   Chip,
   Dialog,
@@ -21,12 +22,13 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import AddIcon from '@mui/icons-material/Add'
+import BlockIcon from '@mui/icons-material/Block'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import LinkOffIcon from '@mui/icons-material/LinkOff'
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import LockResetIcon from '@mui/icons-material/LockReset'
-import type { MemberSummary } from '@blackbox/shared'
+import { ALL_BADGE_ICONS, type AnyBadgeIcon, type MemberSummary } from '@blackbox/shared'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CheckIcon from '@mui/icons-material/Check'
 import {
@@ -36,6 +38,7 @@ import {
   useMe,
   useMembers,
   useRegenerateInviteCode,
+  useUpdateBadges,
   useResetPassword,
   useSettings,
   useUpdateMe,
@@ -48,6 +51,7 @@ import {
 import { usePush } from '../api/push'
 import { Card, Initials, SectionTitle } from '../components/ui'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { BADGE_COMPONENTS, BadgeIconPicker, badgeColor } from '../components/badges'
 import { DateField, DateRangeField } from '../components/DateFields'
 import { palette } from '../theme'
 
@@ -97,6 +101,7 @@ export const SettingsPage = () => {
               engagent l'équipe — les rôles et l'ouverture des signalements. */}
           <KittyDatesSection />
           <FeaturesSection canEdit={isAdmin} />
+          <SystemBadgesSection canEdit={isAdmin} />
           <InviteCodeSection canRegenerate={isAdmin} />
           <MembersSection canManage={isAdmin} />
         </>
@@ -354,6 +359,132 @@ const KittyDatesSection = () => {
 
       {updateSettings.error && <Alert severity="error">{updateSettings.error.message}</Alert>}
     </Section>
+  )
+}
+
+/**
+ * Les distinctions décernées par le système.
+ *
+ * Réservées à l'admin, comme les rôles : elles s'affichent à côté du prénom de
+ * tout le monde. Les badges de règle, eux, se choisissent règle par règle sur
+ * l'écran Règles — là où on décide déjà de ce que la règle sanctionne.
+ *
+ * « Aucun badge » éteint la distinction : pas besoin d'un interrupteur en plus.
+ */
+/**
+ * Les distinctions décernées par le système, telles qu'elles apparaissent à
+ * côté d'un prénom. Celles des règles se choisissent règle par règle.
+ */
+const SYSTEM_BADGES = [
+  { key: 'firstBadgeIcon', label: 'Premier au classement' },
+  { key: 'lastBadgeIcon', label: 'Dernier au classement' },
+  { key: 'firstFineBadgeIcon', label: 'Première amende de la caisse' },
+] as const
+
+type SystemBadgeKey = (typeof SYSTEM_BADGES)[number]['key']
+
+const SystemBadgesSection = ({ canEdit }: { canEdit: boolean }) => {
+  const settings = useSettings()
+  const [editing, setEditing] = useState<SystemBadgeKey | null>(null)
+
+  if (!settings.data) return null
+  const data = settings.data
+
+  return (
+    <Section title="Badges de la caisse">
+      {/* Les icônes en place, pas les dix-huit du choix : c'est un réglage
+          qu'on regarde souvent et qu'on modifie une fois par saison. */}
+      <Stack spacing={1.5}>
+        {SYSTEM_BADGES.map(({ key, label }) => {
+          const icon = data[key]
+          const Icon = icon ? BADGE_COMPONENTS[icon] : BlockIcon
+
+          return (
+            <Stack key={key} direction="row" alignItems="center" spacing={1.5}>
+              <Icon sx={{ color: icon ? badgeColor(icon) : palette.textMuted }} />
+              {/* Libellé grisé sans icône : le pictogramme barré seul se
+                  confondrait avec une icône choisie. */}
+              <Typography
+                variant="body2"
+                sx={{ flex: 1, color: icon ? palette.text : palette.textMuted }}
+              >
+                {label}
+              </Typography>
+              {canEdit && (
+                <IconButton
+                  size="small"
+                  aria-label={'Modifier le badge — ' + label}
+                  onClick={() => setEditing(key)}
+                >
+                  <EditOutlinedIcon fontSize="small" />
+                </IconButton>
+              )}
+            </Stack>
+          )
+        })}
+      </Stack>
+
+      <SystemBadgeDialog
+        badge={SYSTEM_BADGES.find((b) => b.key === editing) ?? null}
+        current={editing ? data[editing] : null}
+        onClose={() => setEditing(null)}
+      />
+    </Section>
+  )
+}
+
+/**
+ * Choix de l'icône d'une distinction.
+ *
+ * Rien n'est enregistré tant qu'on ne valide pas : parcourir la grille ne doit
+ * pas changer les badges de toute l'équipe à chaque tap.
+ */
+const SystemBadgeDialog = ({
+  badge,
+  current,
+  onClose,
+}: {
+  badge: { key: SystemBadgeKey; label: string } | null
+  current: AnyBadgeIcon | null
+  onClose: () => void
+}) => {
+  const updateBadges = useUpdateBadges()
+  const [draft, setDraft] = useState<AnyBadgeIcon | null>(null)
+
+  useEffect(() => {
+    if (badge) setDraft(current)
+  }, [badge, current])
+
+  if (!badge) return null
+
+  return (
+    <Dialog open onClose={onClose} fullWidth maxWidth="xs">
+      <DialogTitle>{badge.label}</DialogTitle>
+
+      <DialogContent>
+        <Box sx={{ pt: 1 }}>
+          <BadgeIconPicker icons={ALL_BADGE_ICONS} value={draft} onChange={setDraft} />
+        </Box>
+        {updateBadges.error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {updateBadges.error.message}
+          </Alert>
+        )}
+      </DialogContent>
+
+      <DialogActions>
+        <Button onClick={onClose}>Annuler</Button>
+        <Button
+          variant="contained"
+          disabled={draft === current || updateBadges.isPending}
+          onClick={() =>
+            updateBadges.mutate({ [badge.key]: draft }, { onSuccess: onClose })
+          }
+        >
+          Enregistrer
+        </Button>
+      </DialogActions>
+    </Dialog>
   )
 }
 
@@ -716,14 +847,14 @@ const MemberDialog = ({
                   color="error"
                   variant="outlined"
                   startIcon={<DeleteOutlineIcon />}
-                  disabled={member.hasFines}
+                  disabled={member.fineCount > 0}
                   onClick={() => setRemoving(true)}
                 >
                   Supprimer le participant
                 </Button>
                 {/* Le bouton est inerte : sans un mot, on ne saurait pas
                     pourquoi, ni quoi faire à la place. */}
-                {member.hasFines && (
+                {member.fineCount > 0 && (
                   <Typography variant="caption" color="text.secondary">
                     Ses amendes font partie de la caisse. Coupe plutôt
                     &nbsp;« Concerné par les amendes ».

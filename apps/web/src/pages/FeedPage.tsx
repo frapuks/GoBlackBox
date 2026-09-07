@@ -32,7 +32,6 @@ import {
   fineState,
   formatAgo,
 } from '../components/ui'
-import { memberBadges } from '../components/badges'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { palette } from '../theme'
 
@@ -65,9 +64,9 @@ export const FeedPage = () => {
 
   const isStaff = me.data?.user.role === 'ADMIN' || me.data?.user.role === 'MANAGER'
 
-  // La liste des membres est déjà chargée pour le filtre : les distinctions
-  // n'en coûtent aucune requête de plus.
-  const badges = memberBadges(members.data ?? [])
+  // La liste des membres est déjà chargée pour le filtre : les badges qu'elle
+  // porte n'en coûtent aucune requête de plus.
+  const badges = new Map((members.data ?? []).map((m) => [m.id, m.badges]))
 
   /**
    * Un joueur peut retirer son propre signalement tant qu'il est en attente.

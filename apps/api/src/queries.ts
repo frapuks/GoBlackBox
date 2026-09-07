@@ -37,7 +37,7 @@ export type MemberSummaryRow = {
   total_owed: number
   total_paid: number
   has_late: boolean
-  has_fines: boolean
+  fine_count: number
 }
 
 /** Colonnes explicites : jamais de SELECT *, sinon les types TS mentent. */
@@ -55,10 +55,10 @@ export const MEMBER_SUMMARY_SQL = `
          COALESCE(SUM(f.amount) FILTER (
            WHERE f.status = 'CONFIRMED' AND f.paid_at IS NOT NULL), 0)::int     AS total_paid,
          COALESCE(BOOL_OR(${IS_LATE_SQL}), FALSE)                              AS has_late,
-         -- « A déjà reçu une amende ». Sur le STATUT, pas sur les montants :
-         -- une règle peut valoir 0 € (une tournée, un gâteau), et un
-         -- signalement en attente n'a encore rien reçu.
-         COUNT(f.id) FILTER (WHERE f.status = 'CONFIRMED') > 0                 AS has_fines
+         -- Compté et non déduit des montants : une règle peut valoir 0 €
+         -- (une tournée, un gâteau), et un signalement en attente n'a encore
+         -- rien reçu.
+         COUNT(f.id) FILTER (WHERE f.status = 'CONFIRMED')::int                AS fine_count
     FROM members m
     LEFT JOIN users u   ON u.id = m.user_id
     LEFT JOIN fines f   ON f.member_id = m.id
@@ -85,7 +85,10 @@ export const toMemberSummary = (r: MemberSummaryRow): MemberSummary => ({
   totalOwed: r.total_owed,
   totalPaid: r.total_paid,
   hasLate: r.has_late,
-  hasFines: r.has_fines,
+  fineCount: r.fine_count,
+  // Rempli par loadBadges() dans les routes : le calcul a besoin de TOUS les
+  // membres, il ne peut donc pas se faire ligne par ligne ici.
+  badges: [],
 })
 
 export type FineRow = {

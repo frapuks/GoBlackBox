@@ -1,7 +1,7 @@
 import { Avatar, Box, Chip, Stack, Typography } from '@mui/material'
 import type { SxProps } from '@mui/material'
-import { fromDayKey } from '@blackbox/shared'
-import { BADGES, type BadgeId } from './badges'
+import { fromDayKey, type MemberBadge } from '@blackbox/shared'
+import { BADGE_COMPONENTS, badgeColor, badgeText } from './badges'
 import { fineColor, palette, type FineState } from '../theme'
 
 /** Titre de section : Bebas Neue, capitales, comme sur les maquettes. */
@@ -83,7 +83,7 @@ export const MemberName = ({
   sx,
 }: {
   name: string
-  badges?: BadgeId[]
+  badges?: MemberBadge[]
   /**
    * Faux là où le nom sert à IDENTIFIER quelqu'un plutôt qu'à l'accompagner —
    * la grille de sélection d'amende. Un nom tronqué y ferait désigner le
@@ -97,16 +97,16 @@ export const MemberName = ({
       {name}
     </Typography>
 
-    {badges.map((id, i) => {
-      const { icon: Icon, label, color } = BADGES[id]
+    {badges.map((badge, i) => {
+      const Icon = BADGE_COMPONENTS[badge.icon]
       return (
         <Icon
           key={i}
-          // Un seul libellé pour le groupe : trois icônes identiques annoncées
-          // trois fois de suite seraient pénibles au lecteur d'écran.
-          titleAccess={i === 0 ? label : undefined}
-          aria-hidden={i > 0}
-          sx={{ flexShrink: 0, fontSize: 15, color, ml: i === 0 ? 0.5 : '-4px' }}
+          // Chaque badge annonce ce qu'il récompense — « Champion · Carton
+          // rouge · 5 amendes ». Sans ça, une icône seule ne dit rien à qui ne
+          // connaît pas le règlement par cœur.
+          titleAccess={badgeText(badge)}
+          sx={{ flexShrink: 0, fontSize: 15, color: badgeColor(badge.icon), ml: 0.4 }}
         />
       )
     })}

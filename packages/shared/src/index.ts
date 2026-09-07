@@ -102,10 +102,13 @@ export type MemberSummary = {
   /** Au moins une amende impayée dépassant lateAfterDays. */
   hasLate: boolean
   /**
-   * A déjà reçu au moins une amende validée. Distinct de `totalOwed > 0` :
-   * une amende peut valoir 0 €, et un signalement en attente ne compte pas.
+   * Nombre d'amendes validées reçues. Compté, et non déduit des montants : une
+   * amende peut valoir 0 € (une tournée, un gâteau), et un signalement en
+   * attente n'a encore rien reçu.
    */
-  hasFines: boolean
+  fineCount: number
+  /** Distinctions portées à côté du prénom. Calculées à la lecture. */
+  badges: MemberBadge[]
 }
 
 export type MemberDetail = MemberSummary & { fines: Fine[] }
@@ -147,6 +150,116 @@ export type PotHistory = {
   /** null quand l'historique est trop court, ou sans date de fin à venir. */
   projection: PotProjection | null
 }
+
+// ---------------------------------------------------------------- badges
+
+/**
+ * Icônes proposées au gestionnaire quand il crée une règle d'infraction.
+ *
+ * Liste fermée et partagée : le formulaire n'en propose pas d'autres, et le
+ * front sait donc dessiner tout ce que la base peut contenir. En ajouter une
+ * demande de toucher cette liste ET le registre d'icônes du front — les deux
+ * sont côte à côte dans la revue.
+ */
+export const BADGE_ICONS = [
+  // Propres au handball et aux usages de la caisse.
+  'star',
+  'sock',
+  'hide',
+  'minus7',
+  'thirty',
+  'megaphone',
+  'clock',
+  'twomin',
+  'angry',
+  'hand',
+  'phone',
+  'danger',
+  'absence',
+  'late',
+  'jersey',
+  'assistwalker',
+  'hotel',
+  'coffee',
+  // Handball.
+  'goattext',
+  'player',
+  'ball',
+  'whistle',
+  'muscle',
+  // Génériques : sans sens imposé, à coller sur n’importe quelle règle.
+  'heart',
+  'bolt',
+  'trophy',
+  'thumbup',
+  'thumbdown',
+  'tagfaces',
+  'donotdisturb',
+  'flag',
+  'party',
+  'question',
+] as const
+export type BadgeIcon = (typeof BADGE_ICONS)[number]
+export const badgeIconSchema = z.enum(BADGE_ICONS)
+
+/**
+ * Icônes que le SYSTÈME décerne, jamais une règle : elles récompensent une
+ * position au classement, pas un type d'amende. Hors de la liste ci-dessus pour
+ * qu'un gestionnaire ne puisse pas se les attribuer.
+ */
+export const SYSTEM_BADGE_ICONS = ['euro', 'crown'] as const
+export type SystemBadgeIcon = (typeof SYSTEM_BADGE_ICONS)[number]
+
+/**
+ * Tout ce qu'un badge peut afficher. Les deux distinctions du classement se
+ * choisissent dans cette liste complète — l'admin peut très bien vouloir un
+ * éclair au premier —, alors qu'une règle reste limitée à BADGE_ICONS.
+ */
+export const ALL_BADGE_ICONS = [...SYSTEM_BADGE_ICONS, ...BADGE_ICONS] as const
+export type AnyBadgeIcon = (typeof ALL_BADGE_ICONS)[number]
+export const anyBadgeIconSchema = z.enum(ALL_BADGE_ICONS)
+
+/**
+ * Une distinction portée à côté d'un prénom.
+ *
+ * Calculée à la lecture, jamais stockée : elle change de porteur dès qu'une
+ * amende est ajoutée ou supprimée, et un état enregistré finirait par mentir.
+ */
+export type MemberBadge = {
+  icon: AnyBadgeIcon
+  /** Ce qu'il récompense : « Le plus de Carton rouge », « Premier au classement ». */
+  label: string
+  /** Sanctions concernées, et leur montant cumulé. Le libellé seul ne suffit
+   *  pas : la fiche du joueur détaille « (3 / 45 €) » sous chaque badge. */
+  count: number
+  amount: number
+}
+
+/**
+ * Les participants qui figurent au classement, dans l'ordre.
+ *
+ * Ici et non dans un écran : le serveur s'en sert pour décerner l'euro et la
+ * couronne, le front pour afficher la liste. Deux implémentations finiraient
+ * par désigner des premiers différents.
+ *
+ * Départage à égalité par le nom, comme le fait le tri SQL.
+ */
+type Rankable = {
+  displayName: string
+  receivesFines: boolean
+  fineCount: number
+  totalOwed: number
+  totalPaid: number
+}
+
+export const rankedMembers = <T extends Rankable>(members: T[]): T[] =>
+  members
+    .filter((m) => m.receivesFines || m.fineCount > 0)
+    .sort(
+      (a, b) =>
+        b.totalOwed + b.totalPaid - (a.totalOwed + a.totalPaid) ||
+        a.displayName.localeCompare(b.displayName),
+    )
 
 // ---------------------------------------------------------------- règles
 
@@ -190,6 +303,8 @@ export const createRuleInput = z.object({
   description: z.string().trim().max(300).optional(),
   /** Ignoré quand la règle a des paliers : c'est alors le palier qui décide. */
   amount: amountSchema,
+  /** Icône du badge décerné au champion. Absente = la règle n'en décerne pas. */
+  badgeIcon: badgeIconSchema.nullable().optional(),
   kind: ruleKindSchema.default('FINE'),
   context: ruleContextSchema.default('OTHER'),
   tiers: z.array(ruleTierInput).max(10).default([]),
@@ -199,6 +314,7 @@ export const updateRuleInput = z.object({
   label: nameSchema.optional(),
   description: z.string().trim().max(300).nullable().optional(),
   amount: amountSchema.optional(),
+  badgeIcon: badgeIconSchema.nullable().optional(),
   context: ruleContextSchema.optional(),
   /** Remplace l'intégralité des paliers. Absent = paliers inchangés. */
   tiers: z.array(ruleTierInput).max(10).optional(),
@@ -212,6 +328,8 @@ export type Rule = {
   amount: number
   kind: RuleKind
   context: RuleContext
+  /** Icône du badge que porte le champion de cette règle. */
+  badgeIcon: BadgeIcon | null
   /** Vide = règle à montant unique. Sinon, c'est le palier qui porte le montant. */
   tiers: RuleTier[]
   archivedAt: string | null
@@ -295,6 +413,13 @@ export const updateSettingsInput = z.object({
 })
 
 /** Ce que l'équipe utilise. Activer ou couper engage tout le monde : admin. */
+/** Les distinctions décernées par le système. `null` retire le badge. */
+export const updateBadgesInput = z.object({
+  firstBadgeIcon: anyBadgeIconSchema.nullable().optional(),
+  lastBadgeIcon: anyBadgeIconSchema.nullable().optional(),
+  firstFineBadgeIcon: anyBadgeIconSchema.nullable().optional(),
+})
+
 export const updateFeaturesInput = z.object({
   allowPlayerReports: z.boolean().optional(),
   enablePenalties: z.boolean().optional(),
@@ -319,6 +444,11 @@ export type Settings = {
   /** Sections de l'écran Règles que l'équipe utilise réellement. */
   enablePenalties: boolean
   enableDues: boolean
+  /** Icônes des badges décernés par le système. null = pas de badge. */
+  firstBadgeIcon: AnyBadgeIcon | null
+  lastBadgeIcon: AnyBadgeIcon | null
+  /** Porté par celui qui a reçu la toute première amende, cotisations exclues. */
+  firstFineBadgeIcon: AnyBadgeIcon | null
   /** Présent uniquement pour l'ADMIN : ne doit jamais fuiter vers un joueur. */
   inviteCode?: string
 }

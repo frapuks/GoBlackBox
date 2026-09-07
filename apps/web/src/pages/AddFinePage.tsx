@@ -10,7 +10,6 @@ import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
 import { RULE_CONTEXTS, RULE_CONTEXT_LABEL, type RuleContext } from '@blackbox/shared'
 import { useAddFine, useFineEntry, useMembers, useRules, useSettings } from '../api/hooks'
 import { Card, Initials, MemberName } from '../components/ui'
-import { memberBadges } from '../components/badges'
 import { FAB_OVERFLOW } from '../components/AppLayout'
 import { RuleCard } from '../components/RuleCard'
 import { palette } from '../theme'
@@ -43,9 +42,6 @@ export const AddFinePage = () => {
   // Un gestionnaire non-joueur n'est pas une cible : il ne doit pas apparaître
   // ici, ni être emporté par « Tout sélectionner ».
   const all = (members.data ?? []).filter((m) => m.receivesFines)
-  // Depuis la liste COMPLÈTE : un participant hors amendes peut figurer au
-  // classement s'il a un historique, et décale donc les rangs suivants.
-  const badges = memberBadges(members.data ?? [])
   const allSelected = all.length > 0 && selected.length === all.length
 
   // Seules les règles du contexte choisi sont proposées : c'est tout l'intérêt
@@ -141,7 +137,7 @@ export const AddFinePage = () => {
                     <Initials name={m.displayName} size={56} />
                     <MemberName
                       name={m.displayName.toUpperCase()}
-                      badges={badges.get(m.id)}
+                      badges={m.badges}
                       noWrap={false}
                       sx={{
                         fontFamily: '"Bebas Neue", sans-serif',

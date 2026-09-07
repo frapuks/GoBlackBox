@@ -23,8 +23,10 @@ import GroupsIcon from '@mui/icons-material/Groups'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import ScheduleIcon from '@mui/icons-material/Schedule'
 import {
+  BADGE_ICONS,
   RULE_CONTEXTS,
   RULE_CONTEXT_LABEL,
+  type BadgeIcon,
   type Rule,
   type RuleContext,
   type RuleKind,
@@ -40,6 +42,7 @@ import {
   useUpdateSettings,
 } from '../api/hooks'
 import { Amount, Card, EmptyState, SectionTitle, formatDate } from '../components/ui'
+import { BadgeIconPicker } from '../components/badges'
 import { RuleCard } from '../components/RuleCard'
 import { ToggleButton, ToggleButtonGroup } from '@mui/material'
 import { palette } from '../theme'
@@ -561,6 +564,7 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
   // l'ajout d'un palier vient effacer, ce qui donne l'impression d'avoir
   // travaillé pour rien.
   const [mode, setMode] = useState<'SIMPLE' | 'TIERS'>('SIMPLE')
+  const [badgeIcon, setBadgeIcon] = useState<BadgeIcon | null>(null)
   const [archived, setArchived] = useState(false)
 
   // Recharge le formulaire à chaque ouverture, sinon on repart des valeurs
@@ -573,6 +577,7 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
     setContext(rule?.context ?? 'OTHER')
     setTiers((rule?.tiers ?? []).map((t) => ({ label: t.label, amount: String(t.amount) })))
     setMode(rule?.tiers.length ? 'TIERS' : 'SIMPLE')
+    setBadgeIcon(rule?.badgeIcon ?? null)
     setArchived(rule?.archivedAt != null)
   }, [target, rule, isDues])
 
@@ -603,6 +608,7 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
           description: description || null,
           amount: cleanTiers.length ? 0 : Number(amount),
           context,
+          badgeIcon,
           tiers: cleanTiers,
           archived,
         },
@@ -616,6 +622,7 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
           amount: cleanTiers.length ? 0 : Number(amount),
           kind,
           context,
+          badgeIcon,
           tiers: cleanTiers,
         },
         { onSuccess: onClose },
@@ -765,6 +772,15 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
               </ToggleButtonGroup>
             </Stack>
           )}
+
+          {/* Réservé aux infractions : une cotisation tombe sur toute l'équipe
+              le même jour, son « champion » serait arbitraire. */}
+          {kind === 'FINE' && <BadgeIconPicker
+              label="Badge du champion"
+              icons={BADGE_ICONS}
+              value={badgeIcon}
+              onChange={setBadgeIcon}
+            />}
 
           {rule && (
             <>

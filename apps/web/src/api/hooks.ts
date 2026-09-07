@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
+  AnyBadgeIcon,
   ApplyRuleResult,
+  BadgeIcon,
   ClaimableMember,
   Dashboard,
   Fine,
@@ -186,6 +188,7 @@ export const useCreateRule = () =>
       amount: number
       kind: RuleKind
       context: RuleContext
+      badgeIcon?: BadgeIcon | null
       tiers: { label: string; amount: number }[]
     }) => post<Rule>('/rules', v),
   )
@@ -202,6 +205,7 @@ export const useUpdateRule = () =>
       description?: string | null
       amount?: number
       context?: RuleContext
+      badgeIcon?: BadgeIcon | null
       tiers?: { label: string; amount: number }[]
       archived?: boolean
     }) => {
@@ -253,6 +257,16 @@ export const useUpdateSettings = () =>
       usageStartDate?: string | null
       usageEndDate?: string | null
     }) => patch<Settings>('/settings', v),
+  )
+
+/** Icônes des distinctions décernées par le système. Admin. */
+export const useUpdateBadges = () =>
+  useDataMutation((v: {
+      firstBadgeIcon?: AnyBadgeIcon | null
+      lastBadgeIcon?: AnyBadgeIcon | null
+      firstFineBadgeIcon?: AnyBadgeIcon | null
+    }) =>
+    patch<Settings>('/settings/badges', v),
   )
 
 /** Interrupteurs de fonctionnalité : route distincte, réservée à l'admin. */
