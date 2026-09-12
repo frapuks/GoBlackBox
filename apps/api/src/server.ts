@@ -10,6 +10,7 @@ import { ruleRoutes } from './routes/rules.js'
 import { fineRoutes } from './routes/fines.js'
 import { settingsRoutes } from './routes/settings.js'
 import { pushRoutes } from './routes/push.js'
+import { startReminders } from './reminders.js'
 
 const isProduction = process.env.NODE_ENV === 'production'
 
@@ -85,6 +86,10 @@ try {
   app.log.error(err)
   process.exit(1)
 }
+
+// Les rappels de cotisation et de pénalité. Démarrés après l'écoute : un
+// minuteur qui échoue ne doit pas empêcher l'app de répondre.
+startReminders((err: unknown) => app.log.error({ err }, 'rappel échoué'))
 
 const shutdown = async () => {
   await app.close()

@@ -1,7 +1,6 @@
 import {
   rankedMembers,
-  type AnyBadgeIcon,
-  type BadgeIcon,
+  type BadgeImage,
   type MemberBadge,
   type RuleContext,
 } from '@blackbox/shared'
@@ -27,7 +26,7 @@ import { query, queryOne } from './db.js'
 
 type ChampionRow = {
   member_id: number
-  icon: BadgeIcon
+  icon: BadgeImage
   rule_label: string
   rule_context: RuleContext
   fines: number
@@ -41,6 +40,12 @@ type ChampionRow = {
  * de ce type, puis le premier à avoir atteint ce total — sa toute première
  * amende de cette règle. Trois critères pour qu'il n'y ait jamais deux
  * porteurs, ni de badge non attribué.
+ *
+ * Toutes les règles sont concernées, cotisations et pénalités de retard
+ * comprises : la pénalité désigne le plus mauvais payeur, ce qui a du sens.
+ * Une cotisation, elle, tombe sur toute l'équipe le même jour, donc son
+ * champion sera le plus ancien de l'effectif — c'est au gestionnaire de juger
+ * si la distinction l'amuse, pas au code de la lui interdire.
  *
  * `DISTINCT ON` retient la première ligne de chaque règle une fois l'ordre posé :
  * c'est exactement « l'argmax », sans sous-requête.
@@ -57,7 +62,6 @@ const CHAMPIONS_SQL = `
     JOIN rules r ON r.id = f.rule_id
    WHERE f.status = 'CONFIRMED'
      AND r.badge_icon IS NOT NULL
-     AND r.kind = 'FINE'
      -- Une règle archivée ne décerne plus rien : elle ne se donne plus, donc
      -- son champion est figé et le badge n'a plus de sens.
      --
@@ -119,9 +123,9 @@ export const loadBadges = async (members: RankInput[]): Promise<Map<number, Memb
   // Les deux icônes sont choisies par l'admin, et `null` retire la distinction :
   // c'est la façon la plus simple de l'éteindre, sans interrupteur dédié.
   const icons = await queryOne<{
-    first_badge_icon: AnyBadgeIcon | null
-    last_badge_icon: AnyBadgeIcon | null
-    first_fine_badge_icon: AnyBadgeIcon | null
+    first_badge_icon: BadgeImage | null
+    last_badge_icon: BadgeImage | null
+    first_fine_badge_icon: BadgeImage | null
   }>(
     'SELECT first_badge_icon, last_badge_icon, first_fine_badge_icon FROM settings WHERE id = 1',
   )
@@ -145,6 +149,7 @@ export const loadBadges = async (members: RankInput[]): Promise<Map<number, Memb
     )
     if (pioneer) {
       push(pioneer.member_id, {
+        source: 'FIRST_FINE',
         icon: icons.first_fine_badge_icon,
         label: 'Première amende de la caisse',
         count: 1,
@@ -158,6 +163,7 @@ export const loadBadges = async (members: RankInput[]): Promise<Map<number, Memb
   const first = ranked[0]
   if (icons?.first_badge_icon && first && total(first) > 0) {
     push(first.id, {
+      source: 'FIRST',
       icon: icons.first_badge_icon,
       label: 'Premier au classement',
       count: first.fineCount,
@@ -175,6 +181,7 @@ export const loadBadges = async (members: RankInput[]): Promise<Map<number, Memb
     total(last) < total(ranked[0]!)
   ) {
     push(last.id, {
+      source: 'LAST',
       icon: icons.last_badge_icon,
       label: 'Dernier au classement',
       count: last.fineCount,
@@ -184,6 +191,7 @@ export const loadBadges = async (members: RankInput[]): Promise<Map<number, Memb
 
   for (const c of await query<ChampionRow>(CHAMPIONS_SQL)) {
     push(c.member_id, {
+      source: 'RULE',
       icon: c.icon,
       label: `Le plus de ${c.rule_label}${CONTEXT_SUFFIX[c.rule_context]}`,
       count: c.fines,

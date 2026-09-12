@@ -1,141 +1,110 @@
-import type { SvgIconProps } from '@mui/material/SvgIcon'
-import { Box, IconButton, Stack, Typography } from '@mui/material'
-import AssistWalkerIcon from '@mui/icons-material/AssistWalker'
-import BlockIcon from '@mui/icons-material/Block'
-import BoltIcon from '@mui/icons-material/Bolt'
-import CampaignIcon from '@mui/icons-material/Campaign'
-import CelebrationIcon from '@mui/icons-material/Celebration'
-import CoffeeIcon from '@mui/icons-material/Coffee'
-import DoNotDisturbOnIcon from '@mui/icons-material/DoNotDisturbOn'
-import EmojiEventsIcon from '@mui/icons-material/EmojiEvents'
-import EuroIcon from '@mui/icons-material/Euro'
-import FavoriteIcon from '@mui/icons-material/Favorite'
-import FitnessCenterIcon from '@mui/icons-material/FitnessCenter'
-import FlagIcon from '@mui/icons-material/Flag'
-import HotelIcon from '@mui/icons-material/Hotel'
-import PanToolIcon from '@mui/icons-material/PanTool'
-import PersonOffIcon from '@mui/icons-material/PersonOff'
-import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone'
-import QuestionMarkIcon from '@mui/icons-material/QuestionMark'
-import ScheduleIcon from '@mui/icons-material/Schedule'
-import SentimentVeryDissatisfiedIcon from '@mui/icons-material/SentimentVeryDissatisfied'
-import SportsIcon from '@mui/icons-material/Sports'
-import SportsHandballIcon from '@mui/icons-material/SportsHandball'
-import SportsVolleyballIcon from '@mui/icons-material/SportsVolleyball'
-import StarIcon from '@mui/icons-material/Star'
-import TagFacesIcon from '@mui/icons-material/TagFaces'
-import ThumbDownIcon from '@mui/icons-material/ThumbDown'
-import ThumbUpIcon from '@mui/icons-material/ThumbUp'
-import WatchIcon from '@mui/icons-material/Watch'
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
-import WarningIcon from '@mui/icons-material/Warning'
-import type { AnyBadgeIcon, MemberBadge } from '@blackbox/shared'
+import { useState } from 'react'
 import {
-  CrownIcon,
-  GoatTextIcon,
-  JerseyIcon,
-  MinusSevenIcon,
-  SockIcon,
-  ThirtyIcon,
-  TwoMinutesIcon,
-} from './icons'
+  Box,
+  Button,
+  ButtonBase,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  Stack,
+  Typography,
+} from '@mui/material'
+import BlockIcon from '@mui/icons-material/Block'
+import {
+  BADGE_IMAGES,
+  type BadgeImage,
+  type BadgeSource,
+  type MemberBadge,
+} from '@blackbox/shared'
 import { palette } from '../theme'
 
 /**
- * Le dessin des badges. QUI les porte se décide côté serveur — les comptages
+ * L'affichage des badges. QUI les porte se décide côté serveur — les comptages
  * par règle et par joueur n'existent dans aucune charge utile du front.
  *
- * Ce registre doit couvrir toute la liste d'icônes du paquet partagé : les deux
- * se modifient ensemble, sinon la base peut contenir une icône que le front ne
- * sait pas dessiner.
+ * Un badge est une IMAGE, et rien d'autre. Les pictogrammes qui se glissaient à
+ * côté du prénom ont disparu : deux vocabulaires pour la même distinction
+ * faisaient dire la chose deux fois, la seconde en moins lisible.
  */
 
-type IconComponent = React.ComponentType<SvgIconProps>
+/** L'adresse d'une image de badge, servie depuis `public/` et non du bundle. */
+export const badgeImageSrc = (image: BadgeImage) => '/badges/' + BADGE_IMAGES[image].file
 
-export const BADGE_COMPONENTS: Record<AnyBadgeIcon, IconComponent> = {
-  // Décernées par le système — classement et première amende —, jamais par une règle.
-  euro: EuroIcon,
-  crown: CrownIcon,
-  // Proposées au gestionnaire à la création d'une règle.
-  star: StarIcon,
-  sock: SockIcon,
-  hide: VisibilityOffIcon,
-  minus7: MinusSevenIcon,
-  thirty: ThirtyIcon,
-  megaphone: CampaignIcon,
-  clock: ScheduleIcon,
-  twomin: TwoMinutesIcon,
-  angry: SentimentVeryDissatisfiedIcon,
-  hand: PanToolIcon,
-  phone: PhoneIphoneIcon,
-  danger: WarningIcon,
-  absence: PersonOffIcon,
-  late: WatchIcon,
-  jersey: JerseyIcon,
-  assistwalker: AssistWalkerIcon,
-  hotel: HotelIcon,
-  coffee: CoffeeIcon,
-  // Handball.
-  goattext: GoatTextIcon,
-  player: SportsHandballIcon,
-  ball: SportsVolleyballIcon,
-  whistle: SportsIcon,
-  muscle: FitnessCenterIcon,
-  // Génériques, sans sens imposé.
-  heart: FavoriteIcon,
-  bolt: BoltIcon,
-  trophy: EmojiEventsIcon,
-  thumbup: ThumbUpIcon,
-  thumbdown: ThumbDownIcon,
-  tagfaces: TagFacesIcon,
-  donotdisturb: DoNotDisturbOnIcon,
-  flag: FlagIcon,
-  party: CelebrationIcon,
-  question: QuestionMarkIcon,
+/**
+ * « 3 amendes / 45 € » — ce que vaut la distinction, sous son libellé.
+ *
+ * Séparé du libellé : sur la fiche du joueur les deux s'empilent sous l'image,
+ * et le chiffre se lit alors plus discrètement que la phrase.
+ */
+export const badgeDetail = (b: MemberBadge) =>
+  // Singulier jusqu'à 1 inclus, zéro compris — « 0 amende », comme le veut
+  // l'usage français. Le cas se produit sur le badge du dernier au classement.
+  `${b.count} amende${b.count > 1 ? 's' : ''} / ${b.amount} €`
+
+/**
+ * L'ordre dans lequel les distinctions se disputent l'avatar : les trois du
+ * système d'abord, les badges de règle en dernier.
+ */
+const PRIORITY: BadgeSource[] = ['FIRST', 'LAST', 'FIRST_FINE', 'RULE']
+
+/**
+ * Le badge à montrer pour un joueur, ou rien s'il n'en porte aucun.
+ *
+ * Un seul s'affiche même quand le joueur en cumule plusieurs : à quarante
+ * pixels, deux images côte à côte ne seraient lisibles ni l'une ni l'autre.
+ */
+export const profileBadge = (badges: MemberBadge[]) => {
+  for (const source of PRIORITY) {
+    const badge = badges.find((b) => b.source === source)
+    if (badge) return { src: badgeImageSrc(badge.icon), label: badge.label }
+  }
+  return null
 }
 
 /**
- * La couleur d'un badge.
+ * Un badge tel qu'il se montre hors de l'avatar : la liste de la fiche joueur,
+ * les réglages, le sélecteur.
  *
- * Accent orange par défaut, pas une couleur d'état : dans cette app le jaune,
- * le rouge et le gris disent où en est un PAIEMENT. Une distinction n'en a pas.
- * La couronne fait exception — elle se lit dorée, et rien d'autre ne le dit.
+ * Rond, comme dans l'avatar : les images sont carrées à la source, et un carré
+ * ici ferait croire à deux badges différents.
  */
-export const badgeColor = (icon: AnyBadgeIcon) =>
-  icon === 'crown' ? palette.accentSoft : palette.accent
+export const BadgeMark = ({
+  art,
+  size = 24,
+}: {
+  art: BadgeImage
+  /** Une largeur CSS : un nombre de pixels, ou « 100% » dans une grille. */
+  size?: number | string
+}) => (
+  <Box
+    component="img"
+    src={badgeImageSrc(art)}
+    alt={BADGE_IMAGES[art].label}
+    sx={{ width: size, height: size, borderRadius: '50%', display: 'block', flexShrink: 0 }}
+  />
+)
 
 /**
- * « Le plus de Carton rouge en match (3 amendes / 45 €) ».
+ * Choix du badge d'une règle ou d'une distinction.
  *
- * Un seul endroit compose ce texte : l'infobulle du prénom et la liste de la
- * fiche joueur disent exactement la même chose.
+ * Une grille plutôt qu'une liste déroulante : on choisit une image à l'œil, pas
+ * par son nom. Quatre par rangée et non six — ce sont des dessins détaillés,
+ * et une vignette trop petite ne se distinguerait pas de sa voisine.
+ *
+ * `null` est une option à part entière : une règle peut ne décerner aucun
+ * badge, et l'admin peut vouloir éteindre une distinction du système.
  */
-export const badgeText = (b: MemberBadge) =>
-  // Singulier jusqu'à 1 inclus, zéro compris — « 0 amende », comme le veut
-  // l'usage français. Le cas se produit sur le badge du dernier au classement.
-  `${b.label} (${b.count} amende${b.count > 1 ? 's' : ''} / ${b.amount} €)`
-
-/**
- * Choix d'une icône de badge.
- *
- * Une grille plutôt qu'une liste déroulante : on choisit une icône à l'œil, pas
- * par son nom. `null` est une option à part entière — une règle peut ne décerner
- * aucun badge, et l'admin peut vouloir éteindre une distinction du système.
- *
- * La liste proposée est un paramètre : une règle ne peut pas s'attribuer l'euro
- * ni la couronne, alors que les réglages y ont droit.
- */
-export const BadgeIconPicker = <T extends AnyBadgeIcon>({
+export const BadgePicker = ({
   label,
-  icons,
   value,
   onChange,
 }: {
   /** Omis quand le titre d'une boîte de dialogue le dit déjà. */
   label?: string
-  icons: readonly T[]
-  value: T | null
-  onChange: (icon: T | null) => void
+  value: BadgeImage | null
+  onChange: (image: BadgeImage | null) => void
 }) => (
   <Stack spacing={0.5}>
     {label && (
@@ -144,44 +113,109 @@ export const BadgeIconPicker = <T extends AnyBadgeIcon>({
       </Typography>
     )}
 
-    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 0.5 }}>
+    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1 }}>
       <IconButton
         aria-label="Aucun badge"
         aria-pressed={value === null}
         onClick={() => onChange(null)}
         sx={{
+          aspectRatio: '1',
           border: '1px solid',
           borderColor: value === null ? palette.accent : 'rgba(148,163,184,0.25)',
           color: value === null ? palette.accent : palette.textMuted,
           borderRadius: 1,
         }}
       >
-        <BlockIcon fontSize="small" />
+        <BlockIcon />
       </IconButton>
 
-      {icons.map((icon) => {
-        // Annoté : l'accès indexé par un générique perd le type du composant,
-        // et TypeScript ne sait plus qu'il accepte les props d'une icône.
-        const Icon: IconComponent = BADGE_COMPONENTS[icon]
-        const active = value === icon
+      {(Object.keys(BADGE_IMAGES) as BadgeImage[]).map((image) => {
+        const active = value === image
         return (
           <IconButton
-            key={icon}
-            aria-label={icon}
+            key={image}
+            aria-label={BADGE_IMAGES[image].label}
             aria-pressed={active}
-            onClick={() => onChange(icon)}
+            onClick={() => onChange(image)}
             sx={{
-              border: '1px solid',
-              borderColor: active ? palette.accent : 'rgba(148,163,184,0.25)',
-              bgcolor: active ? 'rgba(249,115,22,0.12)' : 'transparent',
-              color: active ? palette.accent : palette.text,
+              aspectRatio: '1',
+              p: 0.5,
+              border: '2px solid',
+              borderColor: active ? palette.accent : 'transparent',
               borderRadius: 1,
             }}
           >
-            <Icon fontSize="small" />
+            {/* En pourcentage et non en pixels : la vignette suit la largeur
+                de la colonne, donc la grille reste carrée sur tous les
+                téléphones. */}
+            <BadgeMark art={image} size="100%" />
           </IconButton>
         )
       })}
     </Box>
   </Stack>
 )
+
+/**
+ * Le badge d'une règle, dans un formulaire : on voit celui qui est en place, et
+ * le toucher ouvre la grille pour en changer.
+ *
+ * La grille complète prenait la moitié du formulaire pour un réglage qu'on
+ * touche une fois. Ici elle ne s'ouvre que si on la demande.
+ *
+ * Choisir referme aussitôt : la grille n'a qu'une seule chose à faire, et rien
+ * n'est enregistré tant que le formulaire lui-même n'est pas validé.
+ */
+export const BadgeField = ({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: BadgeImage | null
+  onChange: (image: BadgeImage | null) => void
+}) => {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Stack direction="row" alignItems="center" spacing={1.5}>
+      {/* En blanc, comme les libellés d'interrupteur : c'est une commande, pas un
+          titre de section. */}
+      <Typography variant="body2" sx={{ flex: 1 }}>
+        {label}
+      </Typography>
+
+      <ButtonBase
+        onClick={() => setOpen(true)}
+        aria-label={'Choisir le badge — ' + label}
+        sx={{ gap: 1, p: 0.5, borderRadius: 1 }}
+      >
+        {/* Le visuel seul. Son nom n'apprend rien de plus qu'une image de
+            quarante-quatre pixels, et la grille le redonne au moment du choix. */}
+        {value ? (
+          <BadgeMark art={value} size={44} />
+        ) : (
+          <BlockIcon sx={{ width: 44, height: 44, color: palette.textMuted }} />
+        )}
+      </ButtonBase>
+
+      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>{label}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 1 }}>
+            <BadgePicker
+              value={value}
+              onChange={(next) => {
+                onChange(next)
+                setOpen(false)
+              }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>Fermer</Button>
+        </DialogActions>
+      </Dialog>
+    </Stack>
+  )
+}

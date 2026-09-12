@@ -11,16 +11,27 @@ import {
 import { COOKIE_NAME, cookieOptions, hashPassword, verifyPassword } from '../auth.js'
 import { query, queryOne, transaction } from '../db.js'
 
-const loadMe = async (userId: number): Promise<Me> => {
+/**
+ * Le payload « moi », depuis l'identifiant du compte.
+ *
+ * Exporté : les réglages le reconstruisaient à l'identique, et les deux copies
+ * ont divergé dès qu'un champ s'est ajouté.
+ */
+export const loadMe = async (userId: number): Promise<Me> => {
   const row = await queryOne<{
     id: number
     email: string
     role: Role
     must_change_password: boolean
+    notify_fines: boolean
+    notify_penalty: boolean
+    notify_dues: boolean
+    notify_reports: boolean
     member_id: number | null
     display_name: string | null
   }>(
     `SELECT u.id, u.email, u.role, u.must_change_password,
+            u.notify_fines, u.notify_penalty, u.notify_dues, u.notify_reports,
             m.id AS member_id, m.display_name
        FROM users u
        LEFT JOIN members m ON m.user_id = u.id
@@ -35,6 +46,12 @@ const loadMe = async (userId: number): Promise<Me> => {
       email: row.email,
       role: row.role,
       mustChangePassword: row.must_change_password,
+      notifications: {
+        fines: row.notify_fines,
+        penalty: row.notify_penalty,
+        dues: row.notify_dues,
+        reports: row.notify_reports,
+      },
     },
     member: row.member_id ? { id: row.member_id, displayName: row.display_name! } : null,
   }

@@ -3,13 +3,15 @@ import {
   updateFeaturesInput,
   updateBadgesInput,
   updateMeInput,
+  updateNotificationsInput,
   updateSettingsInput,
   type Me,
-  type AnyBadgeIcon,
+  type BadgeImage,
   type Settings,
 } from '@blackbox/shared'
 import { generateInviteCode, hashPassword, verifyPassword } from '../auth.js'
-import { queryOne, transaction } from '../db.js'
+import { loadMe } from './auth.js'
+import { query, queryOne, transaction } from '../db.js'
 
 export const settingsRoutes: FastifyPluginAsync = async (app) => {
   const auth = { preHandler: [app.requireAuth, app.requireMember] }
@@ -30,9 +32,9 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     allow_player_reports: boolean
     enable_penalties: boolean
     enable_dues: boolean
-    first_badge_icon: AnyBadgeIcon | null
-    last_badge_icon: AnyBadgeIcon | null
-    first_fine_badge_icon: AnyBadgeIcon | null
+    first_badge_icon: BadgeImage | null
+    last_badge_icon: BadgeImage | null
+    first_fine_badge_icon: BadgeImage | null
     invite_code: string
     // `DATE` en base : le driver pg en fait un objet Date à minuit local. On
     // ne le convertit jamais en ISO complet, ce qui décalerait d'un jour selon
@@ -265,30 +267,40 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
       }
     })
 
-    const row = await queryOne<{
-      id: number
-      email: string
-      role: Me['user']['role']
-      must_change_password: boolean
-      member_id: number | null
-      display_name: string | null
-    }>(
-      `SELECT u.id, u.email, u.role, u.must_change_password,
-              m.id AS member_id, m.display_name
-         FROM users u
-         LEFT JOIN members m ON m.user_id = u.id
-        WHERE u.id = $1`,
-      [userId],
+    return loadMe(userId)
+  })
+
+  /**
+   * Ce que ce compte veut recevoir.
+   *
+   * Sur le compte et non sur l'appareil : l'abonnement push dit qu'un
+   * navigateur PEUT recevoir, ces trois drapeaux disent ce qu'on VEUT recevoir,
+   * et ça suit la personne d'un téléphone à l'autre.
+   *
+   * Sans `requireRole` : un joueur peut très bien envoyer `penalty`, la colonne
+   * le retiendra sans rien changer pour lui puisque l'envoi filtre sur le rôle.
+   * Un 403 n'apprendrait rien de plus et casserait l'écran pour un réglage que
+   * le front ne lui affiche même pas.
+   */
+  app.patch('/me/notifications', { preHandler: [app.requireAuth] }, async (req): Promise<Me> => {
+    const body = updateNotificationsInput.parse(req.body)
+
+    await query(
+      `UPDATE users
+          SET notify_fines   = COALESCE($2, notify_fines),
+              notify_penalty = COALESCE($3, notify_penalty),
+              notify_dues    = COALESCE($4, notify_dues),
+              notify_reports = COALESCE($5, notify_reports)
+        WHERE id = $1`,
+      [
+        req.currentUser.id,
+        body.fines ?? null,
+        body.penalty ?? null,
+        body.dues ?? null,
+        body.reports ?? null,
+      ],
     )
 
-    return {
-      user: {
-        id: row!.id,
-        email: row!.email,
-        role: row!.role,
-        mustChangePassword: row!.must_change_password,
-      },
-      member: row!.member_id ? { id: row!.member_id, displayName: row!.display_name! } : null,
-    }
+    return loadMe(req.currentUser.id)
   })
 }

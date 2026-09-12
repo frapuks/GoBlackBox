@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
-  AnyBadgeIcon,
+  BadgeImage,
   ApplyRuleResult,
-  BadgeIcon,
   ClaimableMember,
   Dashboard,
   Fine,
@@ -12,6 +11,7 @@ import type {
   PotHistory,
   ResetPasswordResult,
   Rule,
+  RuleCadence,
   RuleContext,
   RuleKind,
   Settings,
@@ -188,7 +188,10 @@ export const useCreateRule = () =>
       amount: number
       kind: RuleKind
       context: RuleContext
-      badgeIcon?: BadgeIcon | null
+      badgeIcon?: BadgeImage | null
+      cadence?: RuleCadence | null
+      reminderDay?: number | null
+      reminderHour?: number | null
       tiers: { label: string; amount: number }[]
     }) => post<Rule>('/rules', v),
   )
@@ -205,7 +208,10 @@ export const useUpdateRule = () =>
       description?: string | null
       amount?: number
       context?: RuleContext
-      badgeIcon?: BadgeIcon | null
+      badgeIcon?: BadgeImage | null
+      cadence?: RuleCadence | null
+      reminderDay?: number | null
+      reminderHour?: number | null
       tiers?: { label: string; amount: number }[]
       archived?: boolean
     }) => {
@@ -262,9 +268,9 @@ export const useUpdateSettings = () =>
 /** Icônes des distinctions décernées par le système. Admin. */
 export const useUpdateBadges = () =>
   useDataMutation((v: {
-      firstBadgeIcon?: AnyBadgeIcon | null
-      lastBadgeIcon?: AnyBadgeIcon | null
-      firstFineBadgeIcon?: AnyBadgeIcon | null
+      firstBadgeIcon?: BadgeImage | null
+      lastBadgeIcon?: BadgeImage | null
+      firstFineBadgeIcon?: BadgeImage | null
     }) =>
     patch<Settings>('/settings/badges', v),
   )
@@ -289,5 +295,19 @@ export const useUpdateMe = () => {
       qc.setQueryData(['me'], me)
       qc.invalidateQueries()
     },
+  })
+}
+
+/**
+ * Ce que ce compte veut recevoir. Réponse = le « moi » à jour, qu'on réinjecte
+ * dans le cache : l'interrupteur reflète alors ce que le serveur a retenu, et
+ * non ce qu'on croit avoir envoyé.
+ */
+export const useUpdateNotifications = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { fines?: boolean; penalty?: boolean; dues?: boolean }) =>
+      patch<Me>('/me/notifications', v),
+    onSuccess: (me) => qc.setQueryData(['me'], me),
   })
 }

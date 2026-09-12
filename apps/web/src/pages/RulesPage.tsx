@@ -15,18 +15,21 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
+import MenuItem from '@mui/material/MenuItem'
 import AddIcon from '@mui/icons-material/Add'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import GroupsIcon from '@mui/icons-material/Groups'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
-import ScheduleIcon from '@mui/icons-material/Schedule'
 import {
-  BADGE_ICONS,
+  isCadenceLate,
+  RULE_CADENCE_LABEL,
+  WEEKDAY_LABELS,
   RULE_CONTEXTS,
   RULE_CONTEXT_LABEL,
-  type BadgeIcon,
+  type BadgeImage,
+  type RuleCadence,
   type Rule,
   type RuleContext,
   type RuleKind,
@@ -41,8 +44,8 @@ import {
   useUpdateRule,
   useUpdateSettings,
 } from '../api/hooks'
-import { Amount, Card, EmptyState, SectionTitle, formatDate } from '../components/ui'
-import { BadgeIconPicker } from '../components/badges'
+import { Amount, Card, EmptyState, LateBadge, SectionTitle, formatDate } from '../components/ui'
+import { BadgeField } from '../components/badges'
 import { RuleCard } from '../components/RuleCard'
 import { ToggleButton, ToggleButtonGroup } from '@mui/material'
 import { palette } from '../theme'
@@ -87,14 +90,12 @@ export const RulesPage = () => {
         <>
           <SectionHeader
             title="Retard de paiement"
-            onAdd={isStaff ? () => setEditing({ create: 'PENALTY' }) : undefined}
+            // Une seule pénalité, une seule cotisation : le bouton disparaît dès
+            // qu'elle existe, plutôt que de laisser le serveur refuser après coup.
+            onAdd={isStaff && penalties.length === 0 ? () => setEditing({ create: 'PENALTY' }) : undefined}
             addLabel="Ajouter une pénalité de retard"
             first
           />
-
-          {/* Le délai de retard relève du quotidien de l'équipe, pas du paramétrage
-          de l'app : un gestionnaire l'ajuste comme il ajuste les règles. */}
-          <LateDelayCard lateAfterDays={settings.data?.lateAfterDays} editable={isStaff} />
 
           <Stack spacing={1}>
             {penalties.map((r) => (
@@ -109,7 +110,7 @@ export const RulesPage = () => {
         <>
           <SectionHeader
             title="Cotisation"
-            onAdd={isStaff ? () => setEditing({ create: 'DUES' }) : undefined}
+            onAdd={isStaff && dues.length === 0 ? () => setEditing({ create: 'DUES' }) : undefined}
             addLabel="Ajouter une cotisation"
             first={!showPenalties}
           />
@@ -264,6 +265,7 @@ const ApplyRuleCard = ({
 }) => {
   const applyRule = useApplyRule()
   const dashboard = useDashboard()
+  const lateAfterDays = useSettings().data?.lateAfterDays
   const [open, setOpen] = useState(false)
   const archived = rule.archivedAt !== null
   const isPenalty = rule.kind === 'PENALTY'
@@ -297,7 +299,25 @@ const ApplyRuleCard = ({
               {rule.label}
             </Typography>
             {archived && <Chip size="small" label="Archivée" sx={{ height: 20 }} />}
+            {/* Une cotisation attendue cette période et pas encore appliquée.
+                Rien ne se déclenche tout seul : c'est un rappel, pas un état. */}
+            {isCadenceLate(rule) && <LateBadge />}
           </Stack>
+
+          {/* Le rythme se lit sous le libellé : sans lui, « en retard » ne dirait
+              pas en retard de quoi. Le délai suit, sur la pénalité — c'est la
+              seule chose qui dit à partir de quand une amende est en retard, et
+              elle doit rester lisible par tout le monde. */}
+          {(rule.cadence || isPenalty) && (
+            <Typography variant="caption" color="text.secondary">
+              {[
+                rule.cadence && RULE_CADENCE_LABEL[rule.cadence],
+                isPenalty && lateAfterDays && 'en retard après ' + lateAfterDays + ' jours',
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </Typography>
+          )}
         </Box>
 
         <Amount amount={rule.amount} state="due" size="lg" />
@@ -476,67 +496,6 @@ const ApplyDialog = ({
 }
 
 /**
- * Le délai de retard est une information collective : visible par tous sur
- * cet écran, et modifiable uniquement par l'admin, directement ici.
- */
-const LateDelayCard = ({
-  lateAfterDays,
-  editable,
-}: {
-  lateAfterDays: number | undefined
-  editable: boolean
-}) => {
-  const updateSettings = useUpdateSettings()
-  const [value, setValue] = useState('')
-
-  useEffect(() => {
-    if (lateAfterDays !== undefined) setValue(String(lateAfterDays))
-  }, [lateAfterDays])
-
-  if (lateAfterDays === undefined) return null
-
-  const dirty = value !== String(lateAfterDays)
-
-  return (
-    <Card sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-      <ScheduleIcon sx={{ color: palette.accent }} />
-
-      {!editable && (
-        <Typography variant="body2">
-          Une amende est considérée <strong>en retard après {lateAfterDays} jours</strong>.
-        </Typography>
-      )}
-
-      {editable && (
-        <>
-          <Typography variant="body2" sx={{ flex: 1 }}>
-            En retard après
-          </Typography>
-          <TextField
-            size="small"
-            type="number"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            inputProps={{ min: 1, max: 365 }}
-            sx={{ width: 90 }}
-          />
-          <Typography variant="body2">jours</Typography>
-          {dirty && (
-            <Button
-              size="small"
-              variant="contained"
-              onClick={() => updateSettings.mutate({ lateAfterDays: Number(value) })}
-            >
-              OK
-            </Button>
-          )}
-        </>
-      )}
-    </Card>
-  )
-}
-
-/**
  * Même formulaire pour créer et pour modifier, cotisation comme règle : les
  * champs sont identiques, seuls le titre et l'action de soumission changent.
  * L'archivage vit ici aussi, et ne s'applique qu'à la validation.
@@ -547,6 +506,8 @@ const LateDelayCard = ({
 const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => void }) => {
   const createRule = useCreateRule()
   const updateRule = useUpdateRule()
+  const settings = useSettings()
+  const updateSettings = useUpdateSettings()
 
   // `rule` non nul = édition, sinon création. TypeScript a besoin du test
   // `'id' in target` sur `target` lui-même pour discriminer l'union.
@@ -564,7 +525,18 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
   // l'ajout d'un palier vient effacer, ce qui donne l'impression d'avoir
   // travaillé pour rien.
   const [mode, setMode] = useState<'SIMPLE' | 'TIERS'>('SIMPLE')
-  const [badgeIcon, setBadgeIcon] = useState<BadgeIcon | null>(null)
+  const [badgeIcon, setBadgeIcon] = useState<BadgeImage | null>(null)
+  // Cotisation et pénalité : le rythme attendu, ou null pour ne rien réclamer.
+  const [cadence, setCadence] = useState<RuleCadence | null>(null)
+  // Le créneau du rappel, en chaînes : les champs restent vides tant que rien
+  // n'est choisi, ce qu'un nombre ne sait pas représenter.
+  const [reminderDay, setReminderDay] = useState('')
+  const [reminderHour, setReminderHour] = useState('')
+  // Le délai de retard vit dans les réglages de la caisse, pas sur la règle :
+  // il décide de la couleur de CHAQUE amende, pas seulement des pénalités. Il
+  // se modifie ici parce que c'est le seul endroit où il veut dire quelque
+  // chose, et parce qu'il n'existe plus qu'une pénalité.
+  const [lateDays, setLateDays] = useState('')
   const [archived, setArchived] = useState(false)
 
   // Recharge le formulaire à chaque ouverture, sinon on repart des valeurs
@@ -578,8 +550,12 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
     setTiers((rule?.tiers ?? []).map((t) => ({ label: t.label, amount: String(t.amount) })))
     setMode(rule?.tiers.length ? 'TIERS' : 'SIMPLE')
     setBadgeIcon(rule?.badgeIcon ?? null)
+    setCadence(rule?.cadence ?? null)
+    setReminderDay(rule?.reminderDay ? String(rule.reminderDay) : '')
+    setReminderHour(rule?.reminderHour != null ? String(rule.reminderHour) : '')
+    setLateDays(String(settings.data?.lateAfterDays ?? 30))
     setArchived(rule?.archivedAt != null)
-  }, [target, rule, isDues])
+  }, [target, rule, isDues, settings.data?.lateAfterDays])
 
   const pending = createRule.isPending || updateRule.isPending
 
@@ -596,7 +572,24 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
   // revenir ne perd rien. C'est la soumission qui tranche.
   const incomplete = mode === 'TIERS' && cleanTiers.length === 0
 
+  // Un rappel n'existe qu'entier : sans jour ou sans heure, il ne saurait pas
+  // quand partir, et les deux repartent à vide.
+  const reminder =
+    cadence && reminderDay && reminderHour !== ''
+      ? { day: Number(reminderDay), hour: Number(reminderHour) }
+      : { day: null, hour: null }
+
+  // Vrai seulement quand la validation va RETIRER la règle des écrans.
+  const archiving = archived && rule?.archivedAt == null
+
   const submit = () => {
+    // Le délai part dans sa propre requête, vers les réglages : il ne vit pas
+    // sur la règle. Envoyé avant, et seulement s'il a changé — une requête de
+    // plus à chaque ouverture du formulaire n'apprendrait rien au serveur.
+    if (isPenalty && Number(lateDays) > 0 && Number(lateDays) !== settings.data?.lateAfterDays) {
+      updateSettings.mutate({ lateAfterDays: Number(lateDays) })
+    }
+
     if (rule) {
       // L'archivage part dans la même requête que le reste : rien n'est
       // appliqué tant que le formulaire n'est pas validé, et « Annuler »
@@ -609,6 +602,9 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
           amount: cleanTiers.length ? 0 : Number(amount),
           context,
           badgeIcon,
+          cadence,
+          reminderDay: reminder.day,
+          reminderHour: reminder.hour,
           tiers: cleanTiers,
           archived,
         },
@@ -623,6 +619,9 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
           kind,
           context,
           badgeIcon,
+          cadence,
+          reminderDay: reminder.day,
+          reminderHour: reminder.hour,
           tiers: cleanTiers,
         },
         { onSuccess: onClose },
@@ -692,13 +691,6 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               inputProps={{ min: 0, max: 10000 }}
-              helperText={
-                isDues
-                  ? 'Montant dû par chaque membre à chaque application'
-                  : isPenalty
-                    ? 'Montant ajouté à chaque joueur ayant une amende en retard'
-                    : undefined
-              }
             />
           )}
 
@@ -773,36 +765,127 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
             </Stack>
           )}
 
-          {/* Réservé aux infractions : une cotisation tombe sur toute l'équipe
-              le même jour, son « champion » serait arbitraire. */}
-          {kind === 'FINE' && <BadgeIconPicker
-              label="Badge du champion"
-              icons={BADGE_ICONS}
-              value={badgeIcon}
-              onChange={setBadgeIcon}
-            />}
+          {/* Le délai vaut pour TOUTE la caisse — c'est lui qui rend une amende
+              rouge dans le fil — mais il ne se règle que là où il sert. */}
+          {isPenalty && (
+            <TextField
+              label="En retard après (jours)"
+              type="number"
+              value={lateDays}
+              onChange={(e) => setLateDays(e.target.value)}
+              inputProps={{ min: 1, max: 365 }}
+            />
+          )}
+
+          {/* Le rythme n'a de sens que sur ce qu'on applique à date : rien
+              d'autre n'est attendu périodiquement. « Aucun » est un choix à part
+              entière — une cotisation ponctuelle ne doit rien réclamer. */}
+          {kind !== 'FINE' && (
+            <Stack spacing={0.5}>
+              <Typography variant="overline" color="text.secondary">
+                Rythme attendu
+              </Typography>
+              <ToggleButtonGroup
+                exclusive
+                fullWidth
+                size="small"
+                value={cadence}
+                onChange={(_, v: RuleCadence | null) => setCadence(v)}
+              >
+                <ToggleButton value="WEEK">{RULE_CADENCE_LABEL.WEEK}</ToggleButton>
+                <ToggleButton value="MONTH">{RULE_CADENCE_LABEL.MONTH}</ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
+          )}
+
+
+          {/* Le créneau du rappel, sous le rythme dont il dépend. La règle
+              porte ainsi tout ce qui la concerne : son délai, son rythme et le
+              moment où elle réclame.
+
+              Une heure commune à toute l'équipe, et non une par personne :
+              appliquer la cotisation est un geste collectif, un seul
+              gestionnaire le fait pour tout le monde. Chacun garde le choix de
+              recevoir ce rappel ou non, dans ses propres réglages. */}
+          {cadence && (
+            <Stack spacing={0.5}>
+              <Typography variant="overline" color="text.secondary">
+                Rappel aux gestionnaires
+              </Typography>
+              <Stack direction="row" spacing={1}>
+                <TextField
+                  select
+                  size="small"
+                  label={cadence === 'WEEK' ? 'Jour' : 'Jour du mois'}
+                  value={reminderDay}
+                  onChange={(e) => setReminderDay(e.target.value)}
+                  sx={{ flex: 1 }}
+                >
+                  <MenuItem value="">Aucun rappel</MenuItem>
+                  {cadence === 'WEEK'
+                    ? WEEKDAY_LABELS.map((d, i) => (
+                        <MenuItem key={d} value={String(i + 1)}>
+                          {d}
+                        </MenuItem>
+                      ))
+                    : // Plafonné à 28 pour que le créneau existe en février aussi.
+                      Array.from({ length: 28 }, (_, i) => (
+                        <MenuItem key={i} value={String(i + 1)}>
+                          {i === 0 ? '1er' : i + 1}
+                        </MenuItem>
+                      ))}
+                </TextField>
+
+                <TextField
+                  select
+                  size="small"
+                  label="Heure"
+                  value={reminderHour}
+                  onChange={(e) => setReminderHour(e.target.value)}
+                  sx={{ width: 110 }}
+                >
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <MenuItem key={h} value={String(h)}>
+                      {h} h
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Stack>
+            </Stack>
+          )}
+          {/* Ouvert à tous les types de règle, cotisation et pénalité de
+              retard comprises : à chacun de juger si la distinction l'amuse. */}
+          <BadgeField label="Badge du champion" value={badgeIcon} onChange={setBadgeIcon} />
 
           {rule && (
-            <>
+            <Stack spacing={0.5}>
+              <Typography variant="overline" color="text.secondary">
+                Archivage
+              </Typography>
               <FormControlLabel
                 control={
                   <Switch checked={archived} onChange={(e) => setArchived(e.target.checked)} />
                 }
                 label={<Typography variant="body2">Archiver {noun}</Typography>}
               />
-              <Typography variant="caption" color="text.secondary">
-                Une fois archivée, elle n&apos;est plus proposée à la saisie, mais les amendes déjà
-                données restent intactes.
-              </Typography>
-            </>
+            </Stack>
           )}
         </Stack>
       </DialogContent>
 
       <DialogActions>
         <Button onClick={onClose}>Annuler</Button>
-        <Button variant="contained" onClick={submit} disabled={!label || incomplete || pending}>
-          {rule ? 'Enregistrer' : 'Créer'}
+        {/* Archiver part dans la même requête que le reste, mais c'est la seule
+            action du formulaire qui retire quelque chose de l'écran : le bouton
+            l'annonce, et en rouge. Comparé à l'état ACTUEL de la règle — rouvrir
+            une règle déjà archivée ne réarchive rien. */}
+        <Button
+          variant="contained"
+          color={archiving ? 'error' : 'primary'}
+          onClick={submit}
+          disabled={!label || incomplete || pending}
+        >
+          {archiving ? 'Archiver' : rule ? 'Enregistrer' : 'Créer'}
         </Button>
       </DialogActions>
     </Dialog>

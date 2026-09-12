@@ -5,7 +5,7 @@ import { useDashboard, usePotHistory, useSettings } from '../api/hooks'
 import {
   Card,
   EmptyState,
-  Initials,
+  ProfileAvatar,
   LateBadge,
   MemberName,
   Score,
@@ -111,10 +111,10 @@ export const LeaderboardPage = () => {
                 {rank}
               </Typography>
 
-              <Initials name={m.displayName} />
+              <ProfileAvatar name={m.displayName} badges={m.badges} size={56} />
 
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <MemberName name={m.displayName} badges={m.badges} />
+                <MemberName name={m.displayName} />
                 {/* Le détail sous le nom : le gros chiffre étant désormais le
                     total, il faut bien dire quelque part ce qui reste dû. */}
                 <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">

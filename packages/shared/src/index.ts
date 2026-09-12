@@ -58,10 +58,39 @@ export type Me = {
      * changement tant que ce n'est pas fait.
      */
     mustChangePassword: boolean
+    /** Ce que ce compte veut recevoir, où qu'il se connecte. */
+    notifications: NotificationPrefs
   }
   /** null tant que le compte n'a pas réclamé son membre. */
   member: { id: number; displayName: string } | null
 }
+
+/**
+ * Les types de notification qu'un compte accepte.
+ *
+ * Distinct de l'abonnement push, qui est propre à un APPAREIL : autoriser les
+ * notifications dépend du navigateur, vouloir tel rappel suit la personne.
+ *
+ * Les deux rappels de gestion restent sans effet pour un joueur — l'envoi
+ * vérifie le rôle —, et sont éteints quand quelqu'un perd ses droits.
+ */
+export type NotificationPrefs = {
+  /** Ses propres amendes. Vrai par défaut : c'est le comportement historique. */
+  fines: boolean
+  /** Rappel d'appliquer la pénalité de retard. Gestionnaires seulement. */
+  penalty: boolean
+  /** Rappel d'appliquer la cotisation. Gestionnaires seulement. */
+  dues: boolean
+  /** Un joueur vient de signaler une amende. Gestionnaires seulement. */
+  reports: boolean
+}
+
+export const updateNotificationsInput = z.object({
+  fines: z.boolean().optional(),
+  penalty: z.boolean().optional(),
+  dues: z.boolean().optional(),
+  reports: z.boolean().optional(),
+})
 
 export type ClaimableMember = { id: number; displayName: string }
 
@@ -154,70 +183,75 @@ export type PotHistory = {
 // ---------------------------------------------------------------- badges
 
 /**
- * Icônes proposées au gestionnaire quand il crée une règle d'infraction.
+ * Les badges, et rien d'autre : un badge EST une image, affichée à la place de
+ * l'avatar du joueur qui le porte.
  *
- * Liste fermée et partagée : le formulaire n'en propose pas d'autres, et le
- * front sait donc dessiner tout ce que la base peut contenir. En ajouter une
- * demande de toucher cette liste ET le registre d'icônes du front — les deux
- * sont côte à côte dans la revue.
+ * Aucune n'est liée à une distinction : l'admin décide de leur affectation, et
+ * rien n'empêche de mettre la couronne sur la première place. Le libellé décrit
+ * donc le dessin, jamais le rôle qu'on lui donne aujourd'hui.
+ *
+ * Les fichiers vivent dans `apps/web/public/badges/`. Une image ajoutée là
+ * demande une ligne ici, et rien d'autre.
  */
-export const BADGE_ICONS = [
-  // Propres au handball et aux usages de la caisse.
-  'star',
-  'sock',
-  'hide',
-  'minus7',
-  'thirty',
+export const BADGE_IMAGE_KEYS = [
+  'premier',
+  'couronne',
+  'etoile',
+  'euro',
+  'trente',
+  'moins7',
+  'reveil',
+  'horloge',
+  'montre',
   'megaphone',
-  'clock',
-  'twomin',
-  'angry',
-  'hand',
-  'phone',
+  'oeilbarre',
+  'joueurbarre',
+  'sifflet',
+  'maillot',
+  'chasuble',
+  'but',
+  'ballonmain',
+  'telephone',
   'danger',
-  'absence',
-  'late',
-  'jersey',
-  'assistwalker',
-  'hotel',
-  'coffee',
-  // Handball.
-  'goattext',
-  'player',
-  'ball',
-  'whistle',
-  'muscle',
-  // Génériques : sans sens imposé, à coller sur n’importe quelle règle.
-  'heart',
-  'bolt',
-  'trophy',
-  'thumbup',
-  'thumbdown',
-  'tagfaces',
-  'donotdisturb',
-  'flag',
-  'party',
-  'question',
+  'sourire',
+  'grognon',
+  'poucehaut',
+  'poucebas',
 ] as const
-export type BadgeIcon = (typeof BADGE_ICONS)[number]
-export const badgeIconSchema = z.enum(BADGE_ICONS)
+export type BadgeImage = (typeof BADGE_IMAGE_KEYS)[number]
+export const badgeImageSchema = z.enum(BADGE_IMAGE_KEYS)
+
+export const BADGE_IMAGES: Record<BadgeImage, { label: string; file: string }> = {
+  premier: { label: 'Médaille numéro 1', file: 'premier.jpg' },
+  couronne: { label: 'Couronne', file: 'couronne.jpg' },
+  etoile: { label: 'Étoile', file: 'etoiles.jpg' },
+  euro: { label: 'Euro', file: 'euro.jpg' },
+  trente: { label: 'Trente', file: '30.jpg' },
+  moins7: { label: 'Moins sept', file: 'moins7.jpg' },
+  reveil: { label: 'Réveil', file: 'retard.jpg' },
+  horloge: { label: 'Horloge', file: 'horloge.jpg' },
+  montre: { label: 'Montre', file: 'montre.jpg' },
+  megaphone: { label: 'Mégaphone', file: 'contestation.jpg' },
+  oeilbarre: { label: 'Œil barré', file: 'pasvu.jpg' },
+  joueurbarre: { label: 'Joueur barré', file: 'absence.jpg' },
+  sifflet: { label: 'Sifflet', file: 'sifflet.jpg' },
+  maillot: { label: 'Maillot', file: 'maillot.jpg' },
+  chasuble: { label: 'Chasuble', file: 'chasuble.jpg' },
+  but: { label: 'But', file: 'but.jpg' },
+  ballonmain: { label: 'Ballon en main', file: 'main.jpg' },
+  telephone: { label: 'Téléphone', file: 'telephone.jpg' },
+  danger: { label: 'Danger', file: 'danger.jpg' },
+  sourire: { label: 'Visage souriant', file: 'content.jpg' },
+  grognon: { label: 'Visage grognon', file: 'frustration.jpg' },
+  poucehaut: { label: 'Pouce levé', file: 'pouceverslehaut.jpg' },
+  poucebas: { label: 'Pouce baissé', file: 'pouceverslebas.jpg' },
+}
 
 /**
- * Icônes que le SYSTÈME décerne, jamais une règle : elles récompensent une
- * position au classement, pas un type d'amende. Hors de la liste ci-dessus pour
- * qu'un gestionnaire ne puisse pas se les attribuer.
+ * Origine d'une distinction, dans l'ordre de priorité : les trois du système
+ * d'abord, les badges de règle ensuite.
  */
-export const SYSTEM_BADGE_ICONS = ['euro', 'crown'] as const
-export type SystemBadgeIcon = (typeof SYSTEM_BADGE_ICONS)[number]
-
-/**
- * Tout ce qu'un badge peut afficher. Les deux distinctions du classement se
- * choisissent dans cette liste complète — l'admin peut très bien vouloir un
- * éclair au premier —, alors qu'une règle reste limitée à BADGE_ICONS.
- */
-export const ALL_BADGE_ICONS = [...SYSTEM_BADGE_ICONS, ...BADGE_ICONS] as const
-export type AnyBadgeIcon = (typeof ALL_BADGE_ICONS)[number]
-export const anyBadgeIconSchema = z.enum(ALL_BADGE_ICONS)
+export type BadgeSource = 'FIRST' | 'LAST' | 'FIRST_FINE' | 'RULE'
 
 /**
  * Une distinction portée à côté d'un prénom.
@@ -226,7 +260,16 @@ export const anyBadgeIconSchema = z.enum(ALL_BADGE_ICONS)
  * amende est ajoutée ou supprimée, et un état enregistré finirait par mentir.
  */
 export type MemberBadge = {
-  icon: AnyBadgeIcon
+  /**
+   * D'où vient la distinction. Le libellé ne suffit pas à le dire : il est
+   * écrit pour être lu, et le comparer au texte « Premier au classement »
+   * casserait le jour où on reformule la phrase.
+   *
+   * C'est aussi ce qui donnera l'ordre de priorité quand un joueur cumule
+   * plusieurs badges et qu'un seul s'affiche sur son avatar.
+   */
+  source: BadgeSource
+  icon: BadgeImage
   /** Ce qu'il récompense : « Le plus de Carton rouge », « Premier au classement ». */
   label: string
   /** Sanctions concernées, et leur montant cumulé. Le libellé seul ne suffit
@@ -292,6 +335,97 @@ export const RULE_CONTEXT_LABEL: Record<RuleContext, string> = {
 }
 
 /**
+ * Rythme attendu d'une cotisation ou d'une pénalité de retard.
+ *
+ * Rien ne se déclenche tout seul : personne n'encaisse à la place du trésorier,
+ * et une cotisation créée automatiquement serait à annuler la moitié du temps.
+ * Le rythme sert donc uniquement à RAPPELER — la règle se marque « en retard »
+ * tant qu'elle n'a pas été appliquée dans la période en cours.
+ */
+export const RULE_CADENCES = ['WEEK', 'MONTH'] as const
+export const ruleCadenceSchema = z.enum(RULE_CADENCES)
+export type RuleCadence = z.infer<typeof ruleCadenceSchema>
+
+export const RULE_CADENCE_LABEL: Record<RuleCadence, string> = {
+  WEEK: 'Chaque semaine',
+  MONTH: 'Chaque mois',
+}
+
+/** Le début de la période en cours : lundi, ou le 1er du mois. */
+export const periodStart = (cadence: RuleCadence, now: Date) => {
+  if (cadence === 'MONTH') return new Date(now.getFullYear(), now.getMonth(), 1)
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  // `getDay()` compte à partir du dimanche ; la semaine française commence le
+  // lundi, d'où le décalage.
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7))
+  return start
+}
+
+/**
+ * Une cotisation attendue dans la période en cours, et pas encore appliquée.
+ *
+ * Ici plutôt que dans une requête : la règle porte déjà sa dernière date
+ * d'application, et la comparaison se fait dans le fuseau de celui qui regarde
+ * — c'est son mois et sa semaine à lui qui comptent, pas ceux du serveur.
+ *
+ * Le rythme n'a de sens que sur ce qu'on applique à date : une cotisation, ou
+ * la pénalité de retard qu'on passe en revue périodiquement. Une infraction
+ * n'est « en retard » de rien — elle tombe quand quelqu'un la commet.
+ */
+export const isCadenceLate = (
+  rule: { kind: RuleKind; cadence: RuleCadence | null; lastAppliedAt: string | null },
+  now = new Date(),
+) => {
+  if (rule.kind === 'FINE' || !rule.cadence) return false
+  if (!rule.lastAppliedAt) return true
+  return new Date(rule.lastAppliedAt) < periodStart(rule.cadence, now)
+}
+
+/**
+ * Jours de la semaine, lundi en tête — l'ordre français, et celui de la période.
+ * L'indice dans ce tableau plus un donne la valeur stockée : 1 = lundi.
+ */
+export const WEEKDAY_LABELS = [
+  'Lundi',
+  'Mardi',
+  'Mercredi',
+  'Jeudi',
+  'Vendredi',
+  'Samedi',
+  'Dimanche',
+] as const
+
+/**
+ * Le moment du rappel dans la période en cours.
+ *
+ * `day` se lit selon le rythme : 1 à 7 pour une semaine — 1 = lundi —, 1 à 28
+ * pour un mois. Plafonné à 28 pour que le créneau existe en février aussi.
+ */
+export const reminderSlot = (
+  cadence: RuleCadence,
+  day: number,
+  hour: number,
+  now = new Date(),
+) => {
+  const slot = new Date(now)
+  if (cadence === 'MONTH') {
+    slot.setDate(day)
+  } else {
+    // `getDay()` compte à partir du dimanche ; on ramène lundi à 1.
+    const today = ((slot.getDay() + 6) % 7) + 1
+    slot.setDate(slot.getDate() + (day - today))
+  }
+  slot.setHours(hour, 0, 0, 0)
+  return slot
+}
+
+/** « Chaque semaine, le lundi à 19 h ». */
+export const reminderLabel = (cadence: RuleCadence, day: number, hour: number) =>
+  cadence === 'WEEK'
+    ? `${WEEKDAY_LABELS[day - 1]} à ${hour} h`
+    : `Le ${day === 1 ? '1er' : day} du mois à ${hour} h`
+
+/**
  * Un palier d'une règle : « 0 à 5 min », « récidive »… Libellé libre, donc le
  * mécanisme ne se limite pas aux durées.
  */
@@ -304,7 +438,12 @@ export const createRuleInput = z.object({
   /** Ignoré quand la règle a des paliers : c'est alors le palier qui décide. */
   amount: amountSchema,
   /** Icône du badge décerné au champion. Absente = la règle n'en décerne pas. */
-  badgeIcon: badgeIconSchema.nullable().optional(),
+  badgeIcon: badgeImageSchema.nullable().optional(),
+  /** Rythme attendu — cotisations uniquement, ignoré ailleurs. */
+  cadence: ruleCadenceSchema.nullable().optional(),
+  /** Moment du rappel. Sans rythme, ils n'ont pas de sens et sont ignorés. */
+  reminderDay: z.number().int().min(1).max(28).nullable().optional(),
+  reminderHour: z.number().int().min(0).max(23).nullable().optional(),
   kind: ruleKindSchema.default('FINE'),
   context: ruleContextSchema.default('OTHER'),
   tiers: z.array(ruleTierInput).max(10).default([]),
@@ -314,7 +453,10 @@ export const updateRuleInput = z.object({
   label: nameSchema.optional(),
   description: z.string().trim().max(300).nullable().optional(),
   amount: amountSchema.optional(),
-  badgeIcon: badgeIconSchema.nullable().optional(),
+  badgeIcon: badgeImageSchema.nullable().optional(),
+  cadence: ruleCadenceSchema.nullable().optional(),
+  reminderDay: z.number().int().min(1).max(28).nullable().optional(),
+  reminderHour: z.number().int().min(0).max(23).nullable().optional(),
   context: ruleContextSchema.optional(),
   /** Remplace l'intégralité des paliers. Absent = paliers inchangés. */
   tiers: z.array(ruleTierInput).max(10).optional(),
@@ -329,7 +471,12 @@ export type Rule = {
   kind: RuleKind
   context: RuleContext
   /** Icône du badge que porte le champion de cette règle. */
-  badgeIcon: BadgeIcon | null
+  badgeIcon: BadgeImage | null
+  /** Rythme attendu d'une cotisation. null = aucun rappel. */
+  cadence: RuleCadence | null
+  /** Moment du rappel dans la période. null = pas de rappel programmé. */
+  reminderDay: number | null
+  reminderHour: number | null
   /** Vide = règle à montant unique. Sinon, c'est le palier qui porte le montant. */
   tiers: RuleTier[]
   archivedAt: string | null
@@ -415,9 +562,9 @@ export const updateSettingsInput = z.object({
 /** Ce que l'équipe utilise. Activer ou couper engage tout le monde : admin. */
 /** Les distinctions décernées par le système. `null` retire le badge. */
 export const updateBadgesInput = z.object({
-  firstBadgeIcon: anyBadgeIconSchema.nullable().optional(),
-  lastBadgeIcon: anyBadgeIconSchema.nullable().optional(),
-  firstFineBadgeIcon: anyBadgeIconSchema.nullable().optional(),
+  firstBadgeIcon: badgeImageSchema.nullable().optional(),
+  lastBadgeIcon: badgeImageSchema.nullable().optional(),
+  firstFineBadgeIcon: badgeImageSchema.nullable().optional(),
 })
 
 export const updateFeaturesInput = z.object({
@@ -445,10 +592,10 @@ export type Settings = {
   enablePenalties: boolean
   enableDues: boolean
   /** Icônes des badges décernés par le système. null = pas de badge. */
-  firstBadgeIcon: AnyBadgeIcon | null
-  lastBadgeIcon: AnyBadgeIcon | null
+  firstBadgeIcon: BadgeImage | null
+  lastBadgeIcon: BadgeImage | null
   /** Porté par celui qui a reçu la toute première amende, cotisations exclues. */
-  firstFineBadgeIcon: AnyBadgeIcon | null
+  firstFineBadgeIcon: BadgeImage | null
   /** Présent uniquement pour l'ADMIN : ne doit jamais fuiter vers un joueur. */
   inviteCode?: string
 }

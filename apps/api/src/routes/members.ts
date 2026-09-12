@@ -280,7 +280,22 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
     if (!target) throw app.httpErrors.notFound('Compte introuvable')
     if (target.role === 'ADMIN') throw app.httpErrors.badRequest('Le rôle ADMIN est verrouillé')
 
-    await query('UPDATE users SET role = $2 WHERE id = $1', [id, body.role])
+    // Rétrograder éteint les rappels de gestion : un joueur ne déclenche ni
+    // pénalité ni cotisation, un rappel n'aurait plus personne à qui parler.
+    // Repromu, il devra les rallumer — mieux vaut ça qu'une notification qui
+    // revient toute seule des mois plus tard.
+    // Le rôle passe DEUX fois : `role` est une énumération, la comparaison se
+    // fait sur du texte, et un même paramètre ne peut pas être déduit des deux
+    // façons à la fois.
+    await query(
+      `UPDATE users
+          SET role = $2::user_role,
+              notify_penalty = CASE WHEN $3 = 'PLAYER' THEN FALSE ELSE notify_penalty END,
+              notify_dues    = CASE WHEN $3 = 'PLAYER' THEN FALSE ELSE notify_dues    END,
+              notify_reports = CASE WHEN $3 = 'PLAYER' THEN FALSE ELSE notify_reports END
+        WHERE id = $1`,
+      [id, body.role, body.role],
+    )
     return { ok: true }
   })
 

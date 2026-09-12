@@ -149,7 +149,6 @@ export const FeedPage = () => {
                 <Stack direction="row" spacing={1} alignItems="center">
                   <MemberName
                     name={f.memberName}
-                    badges={badges.get(f.memberId)}
                     sx={{ textDecoration: paid ? 'line-through' : 'none' }}
                   />
                   <Typography variant="caption" color="text.secondary" noWrap>

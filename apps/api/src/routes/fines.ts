@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { createFineInput, setPaidInput, type Fine } from '@blackbox/shared'
 import { query, queryOne, transaction } from '../db.js'
 import { FINE_SQL, toFine, type FineRow } from '../queries.js'
-import { notifyNewFines } from '../push.js'
+import { notifyNewFines, notifyNewReports } from '../push.js'
 
 export const fineRoutes: FastifyPluginAsync = async (app) => {
   const auth = { preHandler: [app.requireAuth, app.requireMember] }
@@ -115,11 +115,18 @@ export const fineRoutes: FastifyPluginAsync = async (app) => {
       return rows.map((r) => r.id)
     })
 
-    // Un signalement ne notifie personne : le joueur concerné n'est prévenu
-    // qu'à la validation. Sans `await` par ailleurs — une notification lente
-    // ne doit pas retarder la réponse ni faire échouer l'enregistrement.
+    // Le joueur visé n'est prévenu qu'à la VALIDATION : un signalement n'est
+    // pas encore une amende. Ce sont les gestionnaires qu'on alerte, et
+    // seulement ceux qui l'ont demandé.
+    //
+    // Sans `await` dans les deux cas : une notification lente ne doit pas
+    // retarder la réponse ni faire échouer l'enregistrement.
     if (status === 'CONFIRMED') {
       void notifyNewFines(ids).catch((err) => req.log.error({ err }, 'notification échouée'))
+    } else {
+      void notifyNewReports(ids.length, req.currentUser.id).catch((err) =>
+        req.log.error({ err }, 'notification échouée'),
+      )
     }
 
     reply.code(201)

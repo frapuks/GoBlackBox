@@ -43,6 +43,9 @@ services:
       #                 + logs lisibles + `npm run seed` autorisé
       #   production  → cookie Secure, logs JSON, seed refusé
       NODE_ENV: ${NODE_ENV:-production}
+      # Les conteneurs sont à l'heure de Greenwich par défaut : sans ce réglage,
+      # un rappel programmé à 19 h partirait à 21 h en été.
+      TZ: ${TZ:-Europe/Paris}
       PORT: 3000
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}

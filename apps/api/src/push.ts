@@ -90,6 +90,9 @@ export const notifyNewFines = async (fineIds: number[]) => {
     `SELECT m.user_id, f.label, f.amount
        FROM fines f
        JOIN members m ON m.id = f.member_id
+       -- La préférence du COMPTE, pas celle de l'appareil : couper les amendes
+       -- sur un téléphone les coupe partout, c'est un choix de personne.
+       JOIN users u ON u.id = m.user_id AND u.notify_fines
       WHERE f.id = ANY($1::int[]) AND m.user_id IS NOT NULL`,
     [fineIds],
   )
@@ -114,4 +117,33 @@ export const notifyNewFines = async (fineIds: number[]) => {
       return notifyUsers([userId], { title: 'Nouvelle amende', body, url: '/' })
     }),
   )
+}
+
+/**
+ * Prévient les gestionnaires qu'un joueur vient de signaler des amendes.
+ *
+ * Le rôle est vérifié ICI, en plus de la préférence : celle-ci s'éteint à la
+ * rétrogradation, mais une seule ligne de code en répond. Le filtre sur le rôle
+ * garantit qu'un ancien gestionnaire ne reçoit rien, quel que soit le chemin
+ * par lequel son rôle a changé.
+ *
+ * L'auteur est écarté : il vient de saisir, il sait.
+ */
+export const notifyNewReports = async (count: number, authorUserId: number | null) => {
+  if (!pushEnabled || count === 0) return
+
+  const rows = await query<{ id: number }>(
+    `SELECT id FROM users
+      WHERE role IN ('ADMIN', 'MANAGER')
+        AND notify_reports
+        AND id <> COALESCE($1, 0)`,
+    [authorUserId],
+  )
+  if (!rows.length) return
+
+  await notifyUsers(rows.map((r) => r.id), {
+    title: 'Signalement à valider',
+    body: count === 1 ? 'Une amende attend ta validation' : count + ' amendes attendent ta validation',
+    url: '/fines',
+  })
 }

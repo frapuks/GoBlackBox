@@ -4,7 +4,11 @@ FROM node:22-alpine
 
 # pg_dump, pour la sauvegarde automatique avant migration. Le client 16
 # correspond au serveur : pg_dump refuse de dialoguer avec un serveur plus récent.
-RUN apk add --no-cache postgresql16-client
+#
+# tzdata : Alpine ne contient aucun fuseau. Sans lui, la variable TZ posée par
+# docker-compose reste sans effet et Node tourne à l'heure de Greenwich — un
+# rappel programmé à 19 h partirait à 21 h en été.
+RUN apk add --no-cache postgresql16-client tzdata
 
 WORKDIR /app
 

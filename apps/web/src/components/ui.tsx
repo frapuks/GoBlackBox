@@ -1,7 +1,7 @@
 import { Avatar, Box, Chip, Stack, Typography } from '@mui/material'
 import type { SxProps } from '@mui/material'
 import { fromDayKey, type MemberBadge } from '@blackbox/shared'
-import { BADGE_COMPONENTS, badgeColor, badgeText } from './badges'
+import { profileBadge } from './badges'
 import { fineColor, palette, type FineState } from '../theme'
 
 /** Titre de section : Bebas Neue, capitales, comme sur les maquettes. */
@@ -68,22 +68,18 @@ export const fineState = (paid: boolean, isLate: boolean): FineState =>
   paid ? 'paid' : isLate ? 'late' : 'due'
 
 /**
- * Nom d'un participant, suivi de ses distinctions.
+ * Nom d'un participant.
  *
- * Passer par un composant plutôt que par un `Typography` sur chaque écran :
- * ajouter une icône à un critère ne demande alors de toucher aucun écran.
- *
- * Le nom se tronque, jamais les icônes — elles occupent quelques pixels et
- * disparaîtraient les premières dans une ligne serrée.
+ * Il n'accompagne plus aucune icône — les distinctions vivent dans l'avatar,
+ * juste à gauche. Le composant reste parce qu'il fixe la graisse et la
+ * troncature du nom partout de la même façon.
  */
 export const MemberName = ({
   name,
-  badges = [],
   noWrap = true,
   sx,
 }: {
   name: string
-  badges?: MemberBadge[]
   /**
    * Faux là où le nom sert à IDENTIFIER quelqu'un plutôt qu'à l'accompagner —
    * la grille de sélection d'amende. Un nom tronqué y ferait désigner le
@@ -92,36 +88,88 @@ export const MemberName = ({
   noWrap?: boolean
   sx?: SxProps
 }) => (
-  <Stack direction="row" alignItems="center" sx={{ minWidth: 0 }}>
-    <Typography noWrap={noWrap} sx={{ fontWeight: 600, ...sx }}>
-      {name}
-    </Typography>
-
-    {badges.map((badge, i) => {
-      const Icon = BADGE_COMPONENTS[badge.icon]
-      return (
-        <Icon
-          key={i}
-          // Chaque badge annonce ce qu'il récompense — « Champion · Carton
-          // rouge · 5 amendes ». Sans ça, une icône seule ne dit rien à qui ne
-          // connaît pas le règlement par cœur.
-          titleAccess={badgeText(badge)}
-          sx={{ flexShrink: 0, fontSize: 15, color: badgeColor(badge.icon), ml: 0.4 }}
-        />
-      )
-    })}
-  </Stack>
+  <Typography noWrap={noWrap} sx={{ fontWeight: 600, minWidth: 0, ...sx }}>
+    {name}
+  </Typography>
 )
 
 
-/** Pas de photos de profil en V1 : initiales sur fond neutre. */
-export const Initials = ({ name, size = 40 }: { name: string; size?: number }) => {
+/**
+ * L'avatar d'un participant : son badge s'il en porte un, ses initiales sinon.
+ *
+ * Pas de photos de profil — le badge tient ce rôle. Il est carré à la source et
+ * `Avatar` le découpe en cercle, donc les coins de l'image ne s'affichent
+ * jamais : c'est pourquoi la consigne de génération demande un disque qui
+ * remplit tout le cadre.
+ *
+ * Les badges restent optionnels : l'écran d'inscription liste des noms avant
+ * toute connexion, et n'a donc aucun classement à sa disposition.
+ */
+export const ProfileAvatar = ({
+  name,
+  badges = [],
+  size = 40,
+}: {
+  name: string
+  badges?: MemberBadge[]
+  size?: number
+}) => {
   const initials = name
     .split(/\s+/)
     .slice(0, 2)
     .map((w) => w[0] ?? '')
     .join('')
     .toUpperCase()
+
+  const badge = profileBadge(badges)
+
+  if (badge)
+    return (
+      <Box sx={{ position: 'relative', flexShrink: 0, width: size, height: size }}>
+        <Avatar
+          src={badge.src}
+          alt={badge.label}
+          // Le titre est la seule façon de savoir ce que récompense l'image
+          // depuis le classement. Le détail complet reste sur la fiche du joueur.
+          title={badge.label}
+          sx={{ width: size, height: size }}
+        />
+
+        {/* Le nombre de badges détenus, à partir de deux : à un seul il ne
+            dirait rien de plus que l'image elle-même.
+            Tout est proportionnel à l'avatar — la pastille doit rester la même
+            chose qu'on l'affiche à 32 ou à 56 px —, avec un plancher pour que
+            le chiffre reste lisible sur les plus petits. */}
+        {badges.length > 1 && (
+          <Box
+            title={badges.length + ' badges'}
+            sx={{
+              position: 'absolute',
+              top: -2,
+              right: -2,
+              minWidth: Math.max(16, size * 0.38),
+              height: Math.max(16, size * 0.38),
+              px: 0.4,
+              borderRadius: 999,
+              bgcolor: palette.accent,
+              // Le liseré sombre détache la pastille de l'image dorée, qui est
+              // claire par endroits : sans lui, le chiffre s'y noierait.
+              border: '2px solid ' + palette.bg,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontFamily: '"Archivo Narrow", sans-serif',
+              fontWeight: 700,
+              fontSize: Math.max(10, size * 0.24),
+              lineHeight: 1,
+              color: palette.bg,
+            }}
+          >
+            {badges.length}
+          </Box>
+        )}
+      </Box>
+    )
 
   return (
     <Avatar sx={{ width: size, height: size, bgcolor: '#2A2F36', color: palette.textMuted }}>

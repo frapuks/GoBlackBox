@@ -9,7 +9,7 @@ import FitnessCenterIcon from '@mui/icons-material/FitnessCenter'
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
 import { RULE_CONTEXTS, RULE_CONTEXT_LABEL, type RuleContext } from '@blackbox/shared'
 import { useAddFine, useFineEntry, useMembers, useRules, useSettings } from '../api/hooks'
-import { Card, Initials, MemberName } from '../components/ui'
+import { Amount, Card, ProfileAvatar, MemberName } from '../components/ui'
 import { FAB_OVERFLOW } from '../components/AppLayout'
 import { RuleCard } from '../components/RuleCard'
 import { palette } from '../theme'
@@ -38,6 +38,11 @@ export const AddFinePage = () => {
   const [selected, setSelected] = useState<number[]>([])
   const [context, setContext] = useState<RuleContext | null>(null)
   const [step, setStep] = useState<1 | 2 | 3>(1)
+  // La règle retenue à l'étape 3, avant validation. Toucher une règle ne
+  // déclenche plus la saisie : elle rejoint le récapitulatif, et c'est le
+  // bouton du bas qui engage. Une amende partie par erreur se supprime depuis
+  // le fil, mais autant ne pas la créer.
+  const [picked, setPicked] = useState<{ ruleId: number; tierId?: number } | null>(null)
 
   // Un gestionnaire non-joueur n'est pas une cible : il ne doit pas apparaître
   // ici, ni être emporté par « Tout sélectionner ».
@@ -63,13 +68,23 @@ export const AddFinePage = () => {
 
   const back = () => {
     if (step === 1) navigate(-1)
-    else setStep((s) => (s === 3 ? 2 : 1))
+    else {
+      // Revenir sur le contexte peut changer la liste des règles : garder une
+      // règle retenue qui n'y figure plus la rendrait invisible et invalidable.
+      setPicked(null)
+      setStep((s) => (s === 3 ? 2 : 1))
+    }
   }
 
-  const submit = (ruleId: number, tierId?: number) => {
-    if (selected.length === 0) return
+  // La règle retenue, retrouvée à chaque rendu : le récapitulatif affiche son
+  // libellé et son tarif, que seule la liste complète connaît.
+  const pickedRule = rules.data?.find((r) => r.id === picked?.ruleId)
+  const pickedTier = pickedRule?.tiers.find((t) => t.id === picked?.tierId)
+
+  const submit = () => {
+    if (selected.length === 0 || !picked) return
     addFine.mutate(
-      { memberIds: selected, ruleId, tierId },
+      { memberIds: selected, ruleId: picked.ruleId, tierId: picked.tierId },
       // Une erreur de saisie se corrige depuis le fil, où chaque amende porte
       // son bouton de suppression.
       { onSuccess: () => navigate('/fines') },
@@ -87,7 +102,46 @@ export const AddFinePage = () => {
         </Typography>
       </Stack>
 
-      <LinearProgress variant="determinate" value={(step / 3) * 100} sx={{ mb: 3 }} />
+      <LinearProgress variant="determinate" value={(step / 3) * 100} sx={{ mb: 2 }} />
+
+      {/* Le récapitulatif suit la saisie d'un bout à l'autre : on voit toujours
+          sur qui on est en train de taper, et sur quelle règle.
+
+          Les deux lignes existent dès le départ et ne changent jamais de
+          hauteur. Les faire apparaître ou grandir au fur et à mesure décalerait
+          la grille sous le doigt, au moment précis où l'on vise une carte. */}
+      <Card sx={{ mb: 3, py: 1.5 }}>
+        <Stack spacing={1}>
+          <Stack direction="row" spacing={1} alignItems="baseline">
+            <Typography variant="overline" color="text.secondary" sx={{ flexShrink: 0 }}>
+              Qui
+            </Typography>
+            {/* Une seule ligne, coupée par une ellipse : la carte garde exactement
+                la même hauteur du début à la fin, quel que soit le nombre de
+                joueurs. La hauteur minimale la tient quand elle est vide. */}
+            <Typography variant="body2" noWrap sx={{ flex: 1, minWidth: 0, minHeight: 20 }}>
+              {selectedNames(all, selected)}
+            </Typography>
+          </Stack>
+
+          <Stack
+            direction="row"
+            spacing={1}
+            alignItems="baseline"
+            sx={{ pt: 1, borderTop: '1px solid rgba(148,163,184,0.15)' }}
+          >
+            <Typography variant="overline" color="text.secondary" sx={{ flexShrink: 0 }}>
+              Quoi
+            </Typography>
+            <Typography variant="body2" noWrap sx={{ flex: 1, minWidth: 0, minHeight: 20 }}>
+              {pickedRule ? pickedRule.label + (pickedTier ? ' · ' + pickedTier.label : '') : ''}
+            </Typography>
+            {pickedRule && (
+              <Amount amount={pickedTier?.amount ?? pickedRule.amount} state="due" size="md" />
+            )}
+          </Stack>
+        </Stack>
+      </Card>
 
       {/* ------------------------------------------------ 1 · les joueurs */}
       {step === 1 && (
@@ -134,10 +188,9 @@ export const AddFinePage = () => {
                     />
                   )}
                   <Stack alignItems="center" spacing={1}>
-                    <Initials name={m.displayName} size={56} />
+                    <ProfileAvatar name={m.displayName} badges={m.badges} size={56} />
                     <MemberName
                       name={m.displayName.toUpperCase()}
-                      badges={m.badges}
                       noWrap={false}
                       sx={{
                         fontFamily: '"Bebas Neue", sans-serif',
@@ -203,15 +256,20 @@ export const AddFinePage = () => {
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             {entry.reporting
-              ? 'Ton signalement devra être validé par un gestionnaire avant de compter.'
-              : selected.length === 1
-                ? 'Le tarif sera appliqué à ' + selectedNames(all, selected) + '.'
-                : 'Le tarif sera appliqué aux ' + selected.length + ' joueurs sélectionnés.'}
+              ? 'Choisis une règle, puis valide. Ton signalement devra être validé par un gestionnaire avant de compter.'
+              : 'Choisis une règle, puis valide en bas.'}
           </Typography>
 
           <Stack spacing={1}>
             {contextRules.map((r) => (
-              <RuleCard key={r.id} rule={r} onSelect={submit} />
+              <RuleCard
+                key={r.id}
+                rule={r}
+                onSelect={(ruleId, tierId) => setPicked({ ruleId, tierId })}
+                // Un palier retenu marque sa règle : les deux ne peuvent pas
+                // être choisis séparément, c'est le palier qui porte le montant.
+                selected={picked?.ruleId === r.id}
+              />
             ))}
 
             {contextRules.length === 0 && (
@@ -243,6 +301,25 @@ export const AddFinePage = () => {
             sx={{ boxShadow: '0 6px 18px rgba(0,0,0,0.5)' }}
           >
             Suivant · {selected.length} joueur{selected.length > 1 ? 's' : ''}
+          </Button>
+        </Box>
+      )}
+
+      {/* Le geste qui engage. Au même endroit qu'à l'étape 1, pour que le pouce
+          le retrouve sans le chercher. */}
+      {step === 3 && picked && (
+        <Box sx={{ position: 'sticky', bottom: FAB_OVERFLOW + 8, mt: 2, zIndex: 1 }}>
+          <Button
+            fullWidth
+            size="large"
+            variant="contained"
+            disabled={addFine.isPending}
+            onClick={submit}
+            sx={{ boxShadow: '0 6px 18px rgba(0,0,0,0.5)' }}
+          >
+            {entry.reporting
+              ? 'Signaler'
+              : 'Valider · ' + selected.length + ' amende' + (selected.length > 1 ? 's' : '')}
           </Button>
         </Box>
       )}

@@ -28,7 +28,10 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import LinkOffIcon from '@mui/icons-material/LinkOff'
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import LockResetIcon from '@mui/icons-material/LockReset'
-import { ALL_BADGE_ICONS, type AnyBadgeIcon, type MemberSummary } from '@blackbox/shared'
+import {
+  type BadgeImage,
+  type MemberSummary,
+} from '@blackbox/shared'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CheckIcon from '@mui/icons-material/Check'
 import {
@@ -36,6 +39,7 @@ import {
   useDeleteMember,
   useLogout,
   useMe,
+  useUpdateNotifications,
   useMembers,
   useRegenerateInviteCode,
   useUpdateBadges,
@@ -49,9 +53,9 @@ import {
   useUpdateSettings,
 } from '../api/hooks'
 import { usePush } from '../api/push'
-import { Card, Initials, SectionTitle } from '../components/ui'
+import { Card, ProfileAvatar, SectionTitle } from '../components/ui'
 import { ConfirmDialog } from '../components/ConfirmDialog'
-import { BADGE_COMPONENTS, BadgeIconPicker, badgeColor } from '../components/badges'
+import { BadgeField, BadgeMark } from '../components/badges'
 import { DateField, DateRangeField } from '../components/DateFields'
 import { palette } from '../theme'
 
@@ -155,10 +159,14 @@ const ProfileSection = () => {
 }
 
 /**
- * Notifications push, réglées par appareil.
+ * Deux sections, parce que ce sont deux natures de réglage.
  *
- * L'interrupteur reflète l'abonnement réel du navigateur, pas une préférence
- * stockée : couper supprime l'abonnement, donc plus rien ne peut être envoyé.
+ * L'autorisation est propre à l'APPAREIL : elle reflète l'abonnement réel du
+ * navigateur, pas une préférence stockée — couper supprime l'abonnement, donc
+ * plus rien ne peut être envoyé sur ce téléphone.
+ *
+ * Les types, eux, suivent le COMPTE : un gestionnaire qui installe l'app sur
+ * une tablette retrouve ses choix sans les refaire.
  */
 const NotificationsSection = () => {
   const push = usePush()
@@ -176,30 +184,84 @@ const NotificationsSection = () => {
   }
 
   return (
-    <Section title="Notifications">
-      <FormControlLabel
-        sx={{ ml: 0, justifyContent: 'space-between' }}
-        labelPlacement="start"
-        control={
-          <Switch
-            checked={push.subscribed}
-            disabled={push.blocker !== null || push.busy}
-            onChange={(e) => (e.target.checked ? push.subscribe() : push.unsubscribe())}
-          />
-        }
-        label={
-          <Typography variant="body2">Me prévenir quand je reçois une amende</Typography>
-        }
-      />
+    <>
+      <Section title="Notifications">
+        <FormControlLabel
+          sx={{ ml: 0, justifyContent: 'space-between' }}
+          labelPlacement="start"
+          control={
+            <Switch
+              checked={push.subscribed}
+              disabled={push.blocker !== null || push.busy}
+              onChange={(e) => (e.target.checked ? push.subscribe() : push.unsubscribe())}
+            />
+          }
+          label={<Typography variant="body2">Activer sur cet appareil</Typography>}
+        />
 
-      {push.blocker && (
-        <Typography variant="caption" color="text.secondary">
-          {message[push.blocker]}
-        </Typography>
+        {push.blocker && (
+          <Typography variant="caption" color="text.secondary">
+            {message[push.blocker]}
+          </Typography>
+        )}
+
+        {push.error && <Alert severity="error">{push.error}</Alert>}
+      </Section>
+
+      {/* Rien à régler tant qu'aucun appareil ne peut recevoir : les choix
+          seraient sans effet, et la section poserait une question qui n'a pas
+          encore lieu d'être. */}
+      {push.subscribed && <NotificationKindsSection />}
+    </>
+  )
+}
+
+/**
+ * Ce que ce compte veut recevoir, où qu'il se connecte.
+ *
+ * Les deux rappels de gestion ne s'affichent qu'aux gestionnaires : un joueur
+ * ne déclenche ni pénalité ni cotisation. L'envoi vérifie le rôle de son côté,
+ * donc masquer ici suffit.
+ */
+const NotificationKindsSection = () => {
+  const me = useMe()
+  const updateNotifications = useUpdateNotifications()
+
+  const prefs = me.data?.user.notifications
+  if (!prefs) return null
+
+  const isStaff = me.data?.user.role === 'ADMIN' || me.data?.user.role === 'MANAGER'
+
+  const toggle = (label: string, field: 'fines' | 'penalty' | 'dues' | 'reports') => (
+    <FormControlLabel
+      key={field}
+      sx={{ ml: 0, justifyContent: 'space-between' }}
+      labelPlacement="start"
+      control={
+        <Switch
+          checked={prefs[field]}
+          disabled={updateNotifications.isPending}
+          onChange={(e) => updateNotifications.mutate({ [field]: e.target.checked })}
+        />
+      }
+      label={<Typography variant="body2">{label}</Typography>}
+    />
+  )
+
+  return (
+    <Section title="Types de notification">
+      <Stack spacing={0}>
+        {toggle('Mes amendes', 'fines')}
+        {isStaff && toggle('Rappel des retards de paiement', 'penalty')}
+        {isStaff && toggle('Rappel des cotisations', 'dues')}
+        {isStaff && toggle('Signalement à valider', 'reports')}
+      </Stack>
+
+      {updateNotifications.error && (
+        <Alert severity="error" sx={{ mt: 1 }}>
+          {updateNotifications.error.message}
+        </Alert>
       )}
-
-      {push.error && <Alert severity="error">{push.error}</Alert>}
-
     </Section>
   )
 }
@@ -365,15 +427,11 @@ const KittyDatesSection = () => {
 /**
  * Les distinctions décernées par le système.
  *
- * Réservées à l'admin, comme les rôles : elles s'affichent à côté du prénom de
- * tout le monde. Les badges de règle, eux, se choisissent règle par règle sur
+ * Réservées à l'admin, comme les rôles : elles s'affichent sur l'avatar de tout
+ * le monde. Les badges de règle, eux, se choisissent règle par règle sur
  * l'écran Règles — là où on décide déjà de ce que la règle sanctionne.
  *
  * « Aucun badge » éteint la distinction : pas besoin d'un interrupteur en plus.
- */
-/**
- * Les distinctions décernées par le système, telles qu'elles apparaissent à
- * côté d'un prénom. Celles des règles se choisissent règle par règle.
  */
 const SYSTEM_BADGES = [
   { key: 'firstBadgeIcon', label: 'Premier au classement' },
@@ -382,109 +440,51 @@ const SYSTEM_BADGES = [
 ] as const
 
 type SystemBadgeKey = (typeof SYSTEM_BADGES)[number]['key']
-
 const SystemBadgesSection = ({ canEdit }: { canEdit: boolean }) => {
   const settings = useSettings()
-  const [editing, setEditing] = useState<SystemBadgeKey | null>(null)
+  const updateBadges = useUpdateBadges()
 
   if (!settings.data) return null
   const data = settings.data
 
   return (
     <Section title="Badges de la caisse">
-      {/* Les icônes en place, pas les dix-huit du choix : c'est un réglage
-          qu'on regarde souvent et qu'on modifie une fois par saison. */}
-      <Stack spacing={1.5}>
-        {SYSTEM_BADGES.map(({ key, label }) => {
-          const icon = data[key]
-          const Icon = icon ? BADGE_COMPONENTS[icon] : BlockIcon
+      {/* Le badge en place, pas les quinze du choix : c'est un réglage qu'on
+          regarde souvent et qu'on modifie une fois par saison. La grille ne
+          s'ouvre qu'au clic sur l'image, comme dans le formulaire d'une règle.
 
-          return (
+          Choisir enregistre aussitôt — contrairement aux règles, il n'y a pas
+          de formulaire autour pour porter la validation. */}
+      <Stack spacing={1}>
+        {SYSTEM_BADGES.map(({ key, label }) =>
+          canEdit ? (
+            <BadgeField
+              key={key}
+              label={label}
+              value={data[key]}
+              onChange={(art) => updateBadges.mutate({ [key]: art })}
+            />
+          ) : (
             <Stack key={key} direction="row" alignItems="center" spacing={1.5}>
-              <Icon sx={{ color: icon ? badgeColor(icon) : palette.textMuted }} />
-              {/* Libellé grisé sans icône : le pictogramme barré seul se
-                  confondrait avec une icône choisie. */}
-              <Typography
-                variant="body2"
-                sx={{ flex: 1, color: icon ? palette.text : palette.textMuted }}
-              >
+              <Typography variant="body2" sx={{ flex: 1 }}>
                 {label}
               </Typography>
-              {canEdit && (
-                <IconButton
-                  size="small"
-                  aria-label={'Modifier le badge — ' + label}
-                  onClick={() => setEditing(key)}
-                >
-                  <EditOutlinedIcon fontSize="small" />
-                </IconButton>
+              {data[key] ? (
+                <BadgeMark art={data[key]} size={44} />
+              ) : (
+                <BlockIcon sx={{ width: 44, height: 44, color: palette.textMuted }} />
               )}
             </Stack>
-          )
-        })}
+          ),
+        )}
       </Stack>
 
-      <SystemBadgeDialog
-        badge={SYSTEM_BADGES.find((b) => b.key === editing) ?? null}
-        current={editing ? data[editing] : null}
-        onClose={() => setEditing(null)}
-      />
+      {updateBadges.error && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {updateBadges.error.message}
+        </Alert>
+      )}
     </Section>
-  )
-}
-
-/**
- * Choix de l'icône d'une distinction.
- *
- * Rien n'est enregistré tant qu'on ne valide pas : parcourir la grille ne doit
- * pas changer les badges de toute l'équipe à chaque tap.
- */
-const SystemBadgeDialog = ({
-  badge,
-  current,
-  onClose,
-}: {
-  badge: { key: SystemBadgeKey; label: string } | null
-  current: AnyBadgeIcon | null
-  onClose: () => void
-}) => {
-  const updateBadges = useUpdateBadges()
-  const [draft, setDraft] = useState<AnyBadgeIcon | null>(null)
-
-  useEffect(() => {
-    if (badge) setDraft(current)
-  }, [badge, current])
-
-  if (!badge) return null
-
-  return (
-    <Dialog open onClose={onClose} fullWidth maxWidth="xs">
-      <DialogTitle>{badge.label}</DialogTitle>
-
-      <DialogContent>
-        <Box sx={{ pt: 1 }}>
-          <BadgeIconPicker icons={ALL_BADGE_ICONS} value={draft} onChange={setDraft} />
-        </Box>
-        {updateBadges.error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {updateBadges.error.message}
-          </Alert>
-        )}
-      </DialogContent>
-
-      <DialogActions>
-        <Button onClick={onClose}>Annuler</Button>
-        <Button
-          variant="contained"
-          disabled={draft === current || updateBadges.isPending}
-          onClick={() =>
-            updateBadges.mutate({ [badge.key]: draft }, { onSuccess: onClose })
-          }
-        >
-          Enregistrer
-        </Button>
-      </DialogActions>
-    </Dialog>
   )
 }
 
@@ -1080,7 +1080,7 @@ const MembersSection = ({ canManage }: { canManage: boolean }) => {
       <Stack spacing={1} sx={{ mb: 2 }}>
         {members.data?.map((m) => (
           <Card key={m.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Initials name={m.displayName} size={32} />
+            <ProfileAvatar name={m.displayName} size={32} />
             <Typography sx={{ fontWeight: 600, flex: 1, minWidth: 0 }} noWrap>
               {m.displayName}
             </Typography>

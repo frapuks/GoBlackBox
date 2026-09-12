@@ -3,8 +3,9 @@ import {
   createRuleInput,
   updateRuleInput,
   type ApplyRuleResult,
-  type BadgeIcon,
+  type BadgeImage,
   type Rule,
+  type RuleCadence,
   type RuleContext,
   type RuleKind,
   type RuleTier,
@@ -20,7 +21,10 @@ type RuleRow = {
   amount: number
   kind: RuleKind
   context: RuleContext
-  badge_icon: BadgeIcon | null
+  badge_icon: BadgeImage | null
+  cadence: RuleCadence | null
+  reminder_day: number | null
+  reminder_hour: number | null
   tiers: RuleTier[]
   archived_at: Date | null
   last_applied_at: Date | null
@@ -34,6 +38,9 @@ const toRule = (r: RuleRow): Rule => ({
   kind: r.kind,
   context: r.context,
   badgeIcon: r.badge_icon,
+  cadence: r.cadence,
+  reminderDay: r.reminder_day,
+  reminderHour: r.reminder_hour,
   tiers: r.tiers,
   archivedAt: r.archived_at ? r.archived_at.toISOString() : null,
   lastAppliedAt: r.last_applied_at ? r.last_applied_at.toISOString() : null,
@@ -65,7 +72,7 @@ const replaceTiers = async (
 }
 
 const SELECT = `
-  SELECT r.id, r.label, r.description, r.amount, r.kind, r.context, r.badge_icon, r.archived_at,
+  SELECT r.id, r.label, r.description, r.amount, r.kind, r.context, r.badge_icon, r.cadence, r.reminder_day, r.reminder_hour, r.archived_at,
          ${TIERS_SQL} AS tiers,
          (SELECT MAX(f.created_at) FROM fines f WHERE f.rule_id = r.id) AS last_applied_at
     FROM rules r`
@@ -115,10 +122,29 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       throw app.httpErrors.badRequest('Seule une règle d’infraction peut avoir des paliers')
     }
 
+    // Une seule cotisation et une seule pénalité de retard, par choix : elles
+    // portent un rythme et un délai qui décrivent la caisse entière, et deux
+    // rythmes concurrents ne voudraient rien dire. Les archivées ne comptent
+    // pas — en archiver une libère la place pour sa remplaçante.
+    if (body.kind !== 'FINE') {
+      const existing = await queryOne<{ id: number }>(
+        'SELECT id FROM rules WHERE kind = $1 AND archived_at IS NULL LIMIT 1',
+        [body.kind],
+      )
+      if (existing) {
+        throw app.httpErrors.conflict(
+          body.kind === 'DUES'
+            ? 'Il existe déjà une cotisation'
+            : 'Il existe déjà une pénalité de retard',
+        )
+      }
+    }
+
     const id = await transaction(async (client) => {
       const { rows } = await client.query<{ id: number }>(
-        `INSERT INTO rules (label, description, amount, kind, context, badge_icon)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO rules (label, description, amount, kind, context, badge_icon, cadence,
+                            reminder_day, reminder_hour)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING id`,
         [
           body.label,
@@ -126,9 +152,14 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
           body.amount,
           body.kind,
           body.context,
-          // Une cotisation ou une pénalité tombe sur toute l'équipe le même
-          // jour : son « champion » serait arbitraire, donc pas de badge.
-          body.kind === 'FINE' ? (body.badgeIcon ?? null) : null,
+          body.badgeIcon ?? null,
+          // Le rythme ne veut rien dire sur une infraction : elle tombe quand
+          // quelqu'un la commet, elle n'est en retard de rien.
+          body.kind === 'FINE' ? null : (body.cadence ?? null),
+          // Sans rythme, « chaque lundi » ne veut rien dire : le créneau tombe
+          // avec lui.
+          body.cadence ? (body.reminderDay ?? null) : null,
+          body.cadence ? (body.reminderHour ?? null) : null,
         ],
       )
       await replaceTiers(client, rows[0]!.id, body.tiers)
@@ -158,13 +189,33 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
               -- « retirer l'icône » et « ne pas y toucher » seraient tous deux
               -- NULL et le retrait deviendrait impossible.
               badge_icon  = CASE WHEN $8::boolean THEN $9 ELSE badge_icon END,
+              -- Même mécanique, et une infraction ne garde jamais de rythme :
+              -- c'est la règle qui connaît son type, pas le formulaire.
+              cadence     = CASE
+                              WHEN NOT $10::boolean THEN cadence
+                              WHEN kind <> 'FINE' THEN $11
+                              ELSE NULL
+                            END,
+              -- Le créneau suit le rythme : retirer le rythme retire le
+              -- rappel, sinon il resterait un « chaque lundi » sans semaine.
+              reminder_day  = CASE
+                                WHEN $12::boolean THEN $13
+                                WHEN $10::boolean AND $11 IS NULL THEN NULL
+                                ELSE reminder_day
+                              END,
+              reminder_hour = CASE
+                                WHEN $14::boolean THEN $15
+                                WHEN $10::boolean AND $11 IS NULL THEN NULL
+                                ELSE reminder_hour
+                              END,
               archived_at = CASE
                               WHEN $6::boolean IS NULL THEN archived_at
                               WHEN $6::boolean THEN COALESCE(archived_at, NOW())
                               ELSE NULL
                             END
         WHERE id = $1
-        RETURNING id, label, description, amount, kind, context, badge_icon, archived_at,
+        RETURNING id, label, description, amount, kind, context, badge_icon, cadence,
+                  reminder_day, reminder_hour, archived_at,
                   (SELECT MAX(f.created_at) FROM fines f WHERE f.rule_id = rules.id)
                     AS last_applied_at`,
       [
@@ -177,6 +228,12 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
         body.context ?? null,
         body.badgeIcon !== undefined,
         body.badgeIcon ?? null,
+        body.cadence !== undefined,
+        body.cadence ?? null,
+        body.reminderDay !== undefined,
+        body.reminderDay ?? null,
+        body.reminderHour !== undefined,
+        body.reminderHour ?? null,
       ],
     )
     if (!row) throw app.httpErrors.notFound('Règle introuvable')

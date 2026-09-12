@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Box, Chip, Collapse, IconButton, Stack, Typography } from '@mui/material'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
-import type { Rule } from '@blackbox/shared'
-import { Amount, Card, RuleAmount } from './ui'
+import { isCadenceLate, RULE_CADENCE_LABEL, type Rule } from '@blackbox/shared'
+import { Amount, Card, LateBadge, RuleAmount } from './ui'
 import { palette } from '../theme'
 
 /**
@@ -21,10 +21,13 @@ export const RuleCard = ({
   rule,
   onSelect,
   action,
+  selected = false,
 }: {
   rule: Rule
   onSelect?: (ruleId: number, tierId?: number) => void
   action?: React.ReactNode
+  /** Vrai à l'ajout d'amende, sur la règle retenue tant qu'elle n'est pas validée. */
+  selected?: boolean
 }) => {
   const hasTiers = rule.tiers.length > 0
   const expandable = hasTiers || Boolean(rule.description)
@@ -38,7 +41,18 @@ export const RuleCard = ({
   const rowAction = hasTiers ? toggle : onSelect ? () => onSelect(rule.id) : expandable ? toggle : undefined
 
   return (
-    <Card sx={{ p: 0, overflow: 'hidden', opacity: archived ? 0.45 : 1 }}>
+    <Card
+      sx={{
+        p: 0,
+        overflow: 'hidden',
+        opacity: archived ? 0.45 : 1,
+        // Même marquage que les joueurs à l'étape 1 : bordure ET fond, la seule
+        // bordure passe inaperçue sur un téléphone au soleil.
+        border: '2px solid',
+        borderColor: selected ? palette.accent : 'transparent',
+        bgcolor: selected ? 'rgba(249,115,22,0.12)' : 'background.paper',
+      }}
+    >
       <Box
         onClick={rowAction}
         sx={{
@@ -58,7 +72,18 @@ export const RuleCard = ({
               {rule.label}
             </Typography>
             {archived && <Chip size="small" label="Archivée" sx={{ height: 20 }} />}
+            {/* Une cotisation attendue cette période et pas encore appliquée.
+                Rien ne se déclenche tout seul : c'est un rappel, pas un état. */}
+            {isCadenceLate(rule) && <LateBadge />}
           </Stack>
+
+          {/* Le rythme se lit sous le libellé : sans lui, « en retard » ne dirait
+              pas en retard de quoi. */}
+          {rule.cadence && (
+            <Typography variant="caption" color="text.secondary">
+              {RULE_CADENCE_LABEL[rule.cadence]}
+            </Typography>
+          )}
         </Box>
 
         <RuleAmount amount={rule.amount} tiers={rule.tiers} />

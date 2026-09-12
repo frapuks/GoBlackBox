@@ -15,7 +15,7 @@ import {
   Amount,
   Card,
   EmptyState,
-  Initials,
+  ProfileAvatar,
   LateBadge,
   MemberName,
   SectionTitle,
@@ -23,7 +23,7 @@ import {
   fineState,
   formatDate,
 } from '../components/ui'
-import { BADGE_COMPONENTS, badgeColor, badgeText } from '../components/badges'
+import { BadgeMark, badgeDetail } from '../components/badges'
 import { palette } from '../theme'
 
 /**
@@ -99,30 +99,34 @@ const MemberView = ({ member, title }: { member: MemberDetail; title: string }) 
         </Stack>
 
         {/* Rien à afficher tant qu'aucun badge n'est porté : mieux vaut pas de
-            section qu'une section vide. Alignée à gauche alors que la carte est
-            centrée — une liste centrée se lit mal dès la deuxième ligne. */}
+            section qu'une section vide.
+
+            En grille et non en liste : l'image est le sujet, le texte la
+            légende. Des colonnes d'au moins 104 px donnent trois badges par
+            rangée sur un téléphone, quatre dès qu'il y a la place. */}
         {member.badges.length > 0 && (
-          <Stack
-            spacing={0.75}
+          <Box
             sx={{
               mt: 2.5,
               pt: 2,
               borderTop: '1px solid rgba(148,163,184,0.15)',
-              textAlign: 'left',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))',
+              gap: 2,
             }}
           >
-            {member.badges.map((badge, i) => {
-              const Icon = BADGE_COMPONENTS[badge.icon]
-              return (
-                <Stack key={i} direction="row" spacing={1} alignItems="center">
-                  <Icon sx={{ fontSize: 18, color: badgeColor(badge.icon), flexShrink: 0 }} />
-                  <Typography variant="body2" color="text.secondary">
-                    {badgeText(badge)}
-                  </Typography>
-                </Stack>
-              )
-            })}
-          </Stack>
+            {member.badges.map((badge, i) => (
+              <Stack key={i} spacing={0.75} alignItems="center" sx={{ textAlign: 'center' }}>
+                <BadgeMark art={badge.icon} size={56} />
+                <Typography variant="caption" sx={{ lineHeight: 1.25 }}>
+                  {badge.label}
+                </Typography>
+                <Typography color="text.secondary" sx={{ fontSize: '0.68rem', lineHeight: 1.2 }}>
+                  {badgeDetail(badge)}
+                </Typography>
+              </Stack>
+            ))}
+          </Box>
         )}
       </Card>
 
@@ -164,9 +168,9 @@ export const MePage = () => {
   return (
     <>
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1 }}>
-        <Initials name={data.displayName} size={32} />
+        <ProfileAvatar name={data.displayName} badges={data.badges} size={32} />
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <MemberName name={data.displayName} badges={data.badges} />
+          <MemberName name={data.displayName} />
         </Box>
         <IconButton component={RouterLink} to="/me/settings" aria-label="Réglages">
           <SettingsIcon />
@@ -191,8 +195,8 @@ export const MemberPage = () => {
         <IconButton component={RouterLink} to="/leaderboard" aria-label="Retour">
           <ArrowBackIcon />
         </IconButton>
-        <Initials name={data.displayName} size={32} />
-        <MemberName name={data.displayName} badges={data.badges} />
+        <ProfileAvatar name={data.displayName} badges={data.badges} size={32} />
+        <MemberName name={data.displayName} />
       </Stack>
 
       <MemberView member={data} title="Solde" />

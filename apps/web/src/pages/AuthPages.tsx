@@ -9,7 +9,7 @@ import {
   useSignupContext,
   useUpdateMe,
 } from '../api/hooks'
-import { Card, Initials, SectionTitle } from '../components/ui'
+import { Card, ProfileAvatar, SectionTitle } from '../components/ui'
 import { palette } from '../theme'
 
 const Shell = ({ children }: { children: React.ReactNode }) => (
@@ -181,7 +181,7 @@ export const ClaimPage = () => {
                 color: palette.text,
               }}
             >
-              <Initials name={m.displayName} size={32} />
+              <ProfileAvatar name={m.displayName} size={32} />
               <Typography sx={{ fontWeight: 600, ml: 1.5 }}>{m.displayName}</Typography>
             </Button>
           ))}
