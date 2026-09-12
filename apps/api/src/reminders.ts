@@ -21,13 +21,14 @@ type ReminderRow = {
   cadence: RuleCadence
   reminder_day: number
   reminder_hour: number
+  reminder_minute: number | null
   last_applied_at: Date | null
   reminder_sent_at: Date | null
 }
 
 const DUE_SQL = `
   SELECT r.id, r.kind, r.label, r.cadence, r.reminder_day, r.reminder_hour,
-         r.reminder_sent_at,
+         r.reminder_minute, r.reminder_sent_at,
          (SELECT MAX(f.created_at) FROM fines f WHERE f.rule_id = r.id) AS last_applied_at
     FROM rules r
    WHERE r.archived_at IS NULL
@@ -53,7 +54,14 @@ export const runReminders = async (now = new Date()) => {
   const rules = await query<ReminderRow>(DUE_SQL)
 
   for (const rule of rules) {
-    const slot = reminderSlot(rule.cadence, rule.reminder_day, rule.reminder_hour, now)
+    const slot = reminderSlot(
+      rule.cadence,
+      rule.reminder_day,
+      rule.reminder_hour,
+      // NULL vaut l'heure pile : la colonne est arrivée après les autres.
+      rule.reminder_minute ?? 0,
+      now,
+    )
     if (now < slot) continue
 
     const start = periodStart(rule.cadence, now)

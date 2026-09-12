@@ -25,6 +25,7 @@ type RuleRow = {
   cadence: RuleCadence | null
   reminder_day: number | null
   reminder_hour: number | null
+  reminder_minute: number | null
   tiers: RuleTier[]
   archived_at: Date | null
   last_applied_at: Date | null
@@ -41,6 +42,7 @@ const toRule = (r: RuleRow): Rule => ({
   cadence: r.cadence,
   reminderDay: r.reminder_day,
   reminderHour: r.reminder_hour,
+  reminderMinute: r.reminder_minute,
   tiers: r.tiers,
   archivedAt: r.archived_at ? r.archived_at.toISOString() : null,
   lastAppliedAt: r.last_applied_at ? r.last_applied_at.toISOString() : null,
@@ -72,7 +74,8 @@ const replaceTiers = async (
 }
 
 const SELECT = `
-  SELECT r.id, r.label, r.description, r.amount, r.kind, r.context, r.badge_icon, r.cadence, r.reminder_day, r.reminder_hour, r.archived_at,
+  SELECT r.id, r.label, r.description, r.amount, r.kind, r.context, r.badge_icon, r.cadence, r.reminder_day, r.reminder_hour, r.reminder_minute,
+         r.archived_at,
          ${TIERS_SQL} AS tiers,
          (SELECT MAX(f.created_at) FROM fines f WHERE f.rule_id = r.id) AS last_applied_at
     FROM rules r`
@@ -143,8 +146,8 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
     const id = await transaction(async (client) => {
       const { rows } = await client.query<{ id: number }>(
         `INSERT INTO rules (label, description, amount, kind, context, badge_icon, cadence,
-                            reminder_day, reminder_hour)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                            reminder_day, reminder_hour, reminder_minute)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING id`,
         [
           body.label,
@@ -160,6 +163,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
           // avec lui.
           body.cadence ? (body.reminderDay ?? null) : null,
           body.cadence ? (body.reminderHour ?? null) : null,
+          body.cadence ? (body.reminderMinute ?? 0) : null,
         ],
       )
       await replaceTiers(client, rows[0]!.id, body.tiers)
@@ -208,6 +212,11 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
                                 WHEN $10::boolean AND $11 IS NULL THEN NULL
                                 ELSE reminder_hour
                               END,
+              reminder_minute = CASE
+                                  WHEN $16::boolean THEN $17
+                                  WHEN $10::boolean AND $11 IS NULL THEN NULL
+                                  ELSE reminder_minute
+                                END,
               archived_at = CASE
                               WHEN $6::boolean IS NULL THEN archived_at
                               WHEN $6::boolean THEN COALESCE(archived_at, NOW())
@@ -215,7 +224,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
                             END
         WHERE id = $1
         RETURNING id, label, description, amount, kind, context, badge_icon, cadence,
-                  reminder_day, reminder_hour, archived_at,
+                  reminder_day, reminder_hour, reminder_minute, archived_at,
                   (SELECT MAX(f.created_at) FROM fines f WHERE f.rule_id = rules.id)
                     AS last_applied_at`,
       [
@@ -234,6 +243,8 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
         body.reminderDay ?? null,
         body.reminderHour !== undefined,
         body.reminderHour ?? null,
+        body.reminderMinute !== undefined,
+        body.reminderMinute ?? null,
       ],
     )
     if (!row) throw app.httpErrors.notFound('Règle introuvable')

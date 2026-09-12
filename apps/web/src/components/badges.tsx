@@ -82,7 +82,18 @@ export const BadgeMark = ({
     component="img"
     src={badgeImageSrc(art)}
     alt={BADGE_IMAGES[art].label}
-    sx={{ width: size, height: size, borderRadius: '50%', display: 'block', flexShrink: 0 }}
+    sx={{
+      width: size,
+      height: size,
+      // L'image reste carrée même quand sa largeur vient d'une colonne : sans
+      // ça, une hauteur en pourcentage se résout sur un parent sans hauteur
+      // propre et le disque s'aplatit en ovale.
+      aspectRatio: '1',
+      objectFit: 'cover',
+      borderRadius: '50%',
+      display: 'block',
+      flexShrink: 0,
+    }}
   />
 )
 
@@ -113,7 +124,10 @@ export const BadgePicker = ({
       </Typography>
     )}
 
-    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1 }}>
+    {/* `minmax(0, …)` et non `1fr` seul : une colonne prend par défaut la
+        largeur MINIMALE de son contenu, soit les 256 px de l'image, et la
+        grille déborde alors de la boîte de dialogue. */}
+    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 1 }}>
       <IconButton
         aria-label="Aucun badge"
         aria-pressed={value === null}
@@ -170,18 +184,27 @@ export const BadgeField = ({
   label,
   value,
   onChange,
+  heading = false,
 }: {
   label: string
   value: BadgeImage | null
   onChange: (image: BadgeImage | null) => void
+  /**
+   * Vrai dans un formulaire, où le libellé est un titre de champ comme « Rythme
+   * attendu ». Faux dans les réglages, où la ligne se lit comme un
+   * interrupteur et reste donc en blanc.
+   */
+  heading?: boolean
 }) => {
   const [open, setOpen] = useState(false)
 
   return (
     <Stack direction="row" alignItems="center" spacing={1.5}>
-      {/* En blanc, comme les libellés d'interrupteur : c'est une commande, pas un
-          titre de section. */}
-      <Typography variant="body2" sx={{ flex: 1 }}>
+      <Typography
+        variant={heading ? 'overline' : 'body2'}
+        color={heading ? 'text.secondary' : undefined}
+        sx={{ flex: 1 }}
+      >
         {label}
       </Typography>
 

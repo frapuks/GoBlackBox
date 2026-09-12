@@ -532,6 +532,7 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
   // n'est choisi, ce qu'un nombre ne sait pas représenter.
   const [reminderDay, setReminderDay] = useState('')
   const [reminderHour, setReminderHour] = useState('')
+  const [reminderMinute, setReminderMinute] = useState('0')
   // Le délai de retard vit dans les réglages de la caisse, pas sur la règle :
   // il décide de la couleur de CHAQUE amende, pas seulement des pénalités. Il
   // se modifie ici parce que c'est le seul endroit où il veut dire quelque
@@ -553,6 +554,7 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
     setCadence(rule?.cadence ?? null)
     setReminderDay(rule?.reminderDay ? String(rule.reminderDay) : '')
     setReminderHour(rule?.reminderHour != null ? String(rule.reminderHour) : '')
+    setReminderMinute(String(rule?.reminderMinute ?? 0))
     setLateDays(String(settings.data?.lateAfterDays ?? 30))
     setArchived(rule?.archivedAt != null)
   }, [target, rule, isDues, settings.data?.lateAfterDays])
@@ -576,8 +578,8 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
   // quand partir, et les deux repartent à vide.
   const reminder =
     cadence && reminderDay && reminderHour !== ''
-      ? { day: Number(reminderDay), hour: Number(reminderHour) }
-      : { day: null, hour: null }
+      ? { day: Number(reminderDay), hour: Number(reminderHour), minute: Number(reminderMinute) }
+      : { day: null, hour: null, minute: null }
 
   // Vrai seulement quand la validation va RETIRER la règle des écrans.
   const archiving = archived && rule?.archivedAt == null
@@ -605,6 +607,7 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
           cadence,
           reminderDay: reminder.day,
           reminderHour: reminder.hour,
+          reminderMinute: reminder.minute,
           tiers: cleanTiers,
           archived,
         },
@@ -622,6 +625,7 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
           cadence,
           reminderDay: reminder.day,
           reminderHour: reminder.hour,
+          reminderMinute: reminder.minute,
           tiers: cleanTiers,
         },
         { onSuccess: onClose },
@@ -808,41 +812,44 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
               gestionnaire le fait pour tout le monde. Chacun garde le choix de
               recevoir ce rappel ou non, dans ses propres réglages. */}
           {cadence && (
-            <Stack spacing={0.5}>
+            <Stack spacing={1}>
               <Typography variant="overline" color="text.secondary">
                 Rappel aux gestionnaires
               </Typography>
-              <Stack direction="row" spacing={1}>
-                <TextField
-                  select
-                  size="small"
-                  label={cadence === 'WEEK' ? 'Jour' : 'Jour du mois'}
-                  value={reminderDay}
-                  onChange={(e) => setReminderDay(e.target.value)}
-                  sx={{ flex: 1 }}
-                >
-                  <MenuItem value="">Aucun rappel</MenuItem>
-                  {cadence === 'WEEK'
-                    ? WEEKDAY_LABELS.map((d, i) => (
-                        <MenuItem key={d} value={String(i + 1)}>
-                          {d}
-                        </MenuItem>
-                      ))
-                    : // Plafonné à 28 pour que le créneau existe en février aussi.
-                      Array.from({ length: 28 }, (_, i) => (
-                        <MenuItem key={i} value={String(i + 1)}>
-                          {i === 0 ? '1er' : i + 1}
-                        </MenuItem>
-                      ))}
-                </TextField>
 
+              {/* Le jour occupe sa propre ligne : « Mercredi » ne tient pas dans
+                  un tiers de largeur sur un téléphone, et se faisait tronquer. */}
+              <TextField
+                select
+                size="small"
+                fullWidth
+                label={cadence === 'WEEK' ? 'Jour' : 'Jour du mois'}
+                value={reminderDay}
+                onChange={(e) => setReminderDay(e.target.value)}
+              >
+                <MenuItem value="">Aucun rappel</MenuItem>
+                {cadence === 'WEEK'
+                  ? WEEKDAY_LABELS.map((d, i) => (
+                      <MenuItem key={d} value={String(i + 1)}>
+                        {d}
+                      </MenuItem>
+                    ))
+                  : // Plafonné à 28 pour que le créneau existe en février aussi.
+                    Array.from({ length: 28 }, (_, i) => (
+                      <MenuItem key={i} value={String(i + 1)}>
+                        {i + 1}
+                      </MenuItem>
+                    ))}
+              </TextField>
+
+              <Stack direction="row" spacing={1}>
                 <TextField
                   select
                   size="small"
                   label="Heure"
                   value={reminderHour}
                   onChange={(e) => setReminderHour(e.target.value)}
-                  sx={{ width: 110 }}
+                  sx={{ flex: 1 }}
                 >
                   {Array.from({ length: 24 }, (_, h) => (
                     <MenuItem key={h} value={String(h)}>
@@ -850,12 +857,31 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
                     </MenuItem>
                   ))}
                 </TextField>
+
+                {/* Par pas de cinq minutes : douze entrées suffisent à tous les
+                    créneaux plausibles, là où une liste de soixante se ferait
+                    dérouler pour rien. */}
+                <TextField
+                  select
+                  size="small"
+                  label="Minutes"
+                  value={reminderMinute}
+                  onChange={(e) => setReminderMinute(e.target.value)}
+                  sx={{ flex: 1 }}
+                >
+                  {Array.from({ length: 12 }, (_, i) => i * 5).map((m) => (
+                    <MenuItem key={m} value={String(m)}>
+                      {String(m).padStart(2, '0')}
+                    </MenuItem>
+                  ))}
+                </TextField>
               </Stack>
             </Stack>
           )}
+
           {/* Ouvert à tous les types de règle, cotisation et pénalité de
               retard comprises : à chacun de juger si la distinction l'amuse. */}
-          <BadgeField label="Badge du champion" value={badgeIcon} onChange={setBadgeIcon} />
+          <BadgeField heading label="Badge du champion" value={badgeIcon} onChange={setBadgeIcon} />
 
           {rule && (
             <Stack spacing={0.5}>

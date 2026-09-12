@@ -405,6 +405,7 @@ export const reminderSlot = (
   cadence: RuleCadence,
   day: number,
   hour: number,
+  minute: number,
   now = new Date(),
 ) => {
   const slot = new Date(now)
@@ -415,15 +416,17 @@ export const reminderSlot = (
     const today = ((slot.getDay() + 6) % 7) + 1
     slot.setDate(slot.getDate() + (day - today))
   }
-  slot.setHours(hour, 0, 0, 0)
+  slot.setHours(hour, minute, 0, 0)
   return slot
 }
 
-/** « Chaque semaine, le lundi à 19 h ». */
-export const reminderLabel = (cadence: RuleCadence, day: number, hour: number) =>
-  cadence === 'WEEK'
-    ? `${WEEKDAY_LABELS[day - 1]} à ${hour} h`
-    : `Le ${day === 1 ? '1er' : day} du mois à ${hour} h`
+/** « Lundi à 19 h 30 ». L'heure pile s'écrit sans minutes. */
+export const reminderLabel = (cadence: RuleCadence, day: number, hour: number, minute = 0) => {
+  const time = minute ? `${hour} h ${String(minute).padStart(2, '0')}` : `${hour} h`
+  return cadence === 'WEEK'
+    ? `${WEEKDAY_LABELS[day - 1]} à ${time}`
+    : `Le ${day === 1 ? '1er' : day} du mois à ${time}`
+}
 
 /**
  * Un palier d'une règle : « 0 à 5 min », « récidive »… Libellé libre, donc le
@@ -444,6 +447,7 @@ export const createRuleInput = z.object({
   /** Moment du rappel. Sans rythme, ils n'ont pas de sens et sont ignorés. */
   reminderDay: z.number().int().min(1).max(28).nullable().optional(),
   reminderHour: z.number().int().min(0).max(23).nullable().optional(),
+  reminderMinute: z.number().int().min(0).max(59).nullable().optional(),
   kind: ruleKindSchema.default('FINE'),
   context: ruleContextSchema.default('OTHER'),
   tiers: z.array(ruleTierInput).max(10).default([]),
@@ -457,6 +461,7 @@ export const updateRuleInput = z.object({
   cadence: ruleCadenceSchema.nullable().optional(),
   reminderDay: z.number().int().min(1).max(28).nullable().optional(),
   reminderHour: z.number().int().min(0).max(23).nullable().optional(),
+  reminderMinute: z.number().int().min(0).max(59).nullable().optional(),
   context: ruleContextSchema.optional(),
   /** Remplace l'intégralité des paliers. Absent = paliers inchangés. */
   tiers: z.array(ruleTierInput).max(10).optional(),
@@ -477,6 +482,7 @@ export type Rule = {
   /** Moment du rappel dans la période. null = pas de rappel programmé. */
   reminderDay: number | null
   reminderHour: number | null
+  reminderMinute: number | null
   /** Vide = règle à montant unique. Sinon, c'est le palier qui porte le montant. */
   tiers: RuleTier[]
   archivedAt: string | null

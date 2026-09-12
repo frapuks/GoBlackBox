@@ -192,6 +192,7 @@ export const useCreateRule = () =>
       cadence?: RuleCadence | null
       reminderDay?: number | null
       reminderHour?: number | null
+      reminderMinute?: number | null
       tiers: { label: string; amount: number }[]
     }) => post<Rule>('/rules', v),
   )
@@ -212,6 +213,7 @@ export const useUpdateRule = () =>
       cadence?: RuleCadence | null
       reminderDay?: number | null
       reminderHour?: number | null
+      reminderMinute?: number | null
       tiers?: { label: string; amount: number }[]
       archived?: boolean
     }) => {
