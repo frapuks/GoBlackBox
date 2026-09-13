@@ -36,10 +36,14 @@ type ChampionRow = {
 /**
  * Le champion de chaque règle qui décerne un badge.
  *
- * Départage, dans l'ordre : le plus d'amendes, puis le plus gros montant cumulé
- * de ce type, puis le premier à avoir atteint ce total — sa toute première
- * amende de cette règle. Trois critères pour qu'il n'y ait jamais deux
- * porteurs, ni de badge non attribué.
+ * Départage, dans l'ordre :
+ *  1. le plus d'amendes de cette règle ;
+ *  2. le plus gros montant cumulé de cette règle ;
+ *  3. le MOINS d'amendes au total, cotisations exclues ;
+ *  4. la première amende de cette règle la plus ancienne ;
+ *  5. l'amende enregistrée la première, pour les lots de même date.
+ * Cinq critères pour qu'il n'y ait jamais deux porteurs, ni de badge non
+ * attribué.
  *
  * Toutes les règles sont concernées, cotisations et pénalités de retard
  * comprises : la pénalité désigne le plus mauvais payeur, ce qui a du sens.
@@ -50,7 +54,7 @@ type ChampionRow = {
  * `DISTINCT ON` retient la première ligne de chaque règle une fois l'ordre posé :
  * c'est exactement « l'argmax », sans sous-requête.
  */
-const CHAMPIONS_SQL = `
+const championsSql = (cutoff: boolean) => `
   SELECT DISTINCT ON (f.rule_id)
          f.member_id,
          r.badge_icon                AS icon,
@@ -60,6 +64,18 @@ const CHAMPIONS_SQL = `
          SUM(f.amount)::int          AS euros
     FROM fines f
     JOIN rules r ON r.id = f.rule_id
+    -- Le nombre total d'amendes de chaque joueur, pour le troisième critère.
+    -- Cotisations exclues, comme partout où l'on parle d'amendes : elles
+    -- tombent sur tout le monde et ne disent rien du comportement.
+    LEFT JOIN (
+      SELECT g.member_id, COUNT(*)::int AS all_fines
+        FROM fines g
+        LEFT JOIN rules gr ON gr.id = g.rule_id
+       WHERE g.status = 'CONFIRMED'
+         AND (gr.kind IS NULL OR gr.kind <> 'DUES')
+         ${cutoff ? 'AND g.created_at < $1' : ''}
+       GROUP BY g.member_id
+    ) totals ON totals.member_id = f.member_id
    WHERE f.status = 'CONFIRMED'
      AND r.badge_icon IS NOT NULL
      -- Une règle archivée ne décerne plus rien : elle ne se donne plus, donc
@@ -69,11 +85,25 @@ const CHAMPIONS_SQL = `
      -- système n'est stocké, et l'archivage se défait. Désarchiver rend donc le
      -- badge, au lieu d'obliger à rechoisir l'icône.
      AND r.archived_at IS NULL
-   GROUP BY f.rule_id, f.member_id, r.badge_icon, r.label, r.context
+     ${cutoff ? 'AND f.created_at < $1' : ''}
+   GROUP BY f.rule_id, f.member_id, r.badge_icon, r.label, r.context, totals.all_fines
    ORDER BY f.rule_id,
             COUNT(*) DESC,
             SUM(f.amount) DESC,
-            MIN(f.created_at) ASC
+            -- À égalité sur la règle, le joueur qui a le MOINS d'amendes au total :
+            -- cette règle pèse plus lourd dans son comportement. Effet voulu, les
+            -- badges se répartissent sur davantage de joueurs — un joueur peut
+            -- toujours tous les cumuler, mais seulement en étant majoritaire
+            -- strict sur chacun.
+            totals.all_fines ASC,
+            MIN(f.created_at) ASC,
+            -- Dernier recours, et il est indispensable : des amendes saisies en
+            -- lot portent la MÊME date à la microseconde, NOW() étant figé pour
+            -- toute la transaction. Sans ce critère, deux joueurs à égalité
+            -- parfaite se disputaient le badge au hasard d'une lecture à
+            -- l'autre — et le résumé de la semaine y voyait un changement de
+            -- porteur qui n'avait jamais eu lieu.
+            MIN(f.id) ASC
 `
 
 /**
@@ -90,7 +120,7 @@ const CONTEXT_SUFFIX: Record<RuleContext, string> = {
 }
 
 /** Ce dont le calcul a besoin pour décerner les distinctions du classement. */
-type RankInput = {
+export type RankInput = {
   id: number
   displayName: string
   receivesFines: boolean
@@ -112,7 +142,19 @@ const MIN_FOR_LAST = 4
  * ensuite : l'ordre est stable d'un écran à l'autre, sans quoi les icônes
  * changeraient de place au gré des requêtes.
  */
-export const loadBadges = async (members: RankInput[]): Promise<Map<number, MemberBadge[]>> => {
+export const loadBadges = async (
+  members: RankInput[],
+  /**
+   * Les badges tels qu'ils étaient à cette date, en n'écoutant que les amendes
+   * créées AVANT. Sert au résumé de la semaine, qui compare deux lundis.
+   *
+   * Les membres passés doivent alors être décomptés à la même date : le
+   * classement, et donc l'euro et la couronne, en dépendent.
+   */
+  until?: Date,
+): Promise<Map<number, MemberBadge[]>> => {
+  const cutoff = until !== undefined
+  const cutoffParams = cutoff ? [until] : []
   const byMember = new Map<number, MemberBadge[]>()
   const push = (id: number, badge: MemberBadge) =>
     byMember.set(id, [...(byMember.get(id) ?? []), badge])
@@ -144,8 +186,10 @@ export const loadBadges = async (members: RankInput[]): Promise<Map<number, Memb
          LEFT JOIN rules r ON r.id = f.rule_id
         WHERE f.status = 'CONFIRMED'
           AND (r.kind IS NULL OR r.kind <> 'DUES')
+          ${cutoff ? 'AND f.created_at < $1' : ''}
         ORDER BY f.created_at ASC, f.id ASC
         LIMIT 1`,
+      cutoffParams,
     )
     if (pioneer) {
       push(pioneer.member_id, {
@@ -189,7 +233,7 @@ export const loadBadges = async (members: RankInput[]): Promise<Map<number, Memb
     })
   }
 
-  for (const c of await query<ChampionRow>(CHAMPIONS_SQL)) {
+  for (const c of await query<ChampionRow>(championsSql(cutoff), cutoffParams)) {
     push(c.member_id, {
       source: 'RULE',
       icon: c.icon,

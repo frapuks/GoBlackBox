@@ -14,6 +14,7 @@ import {
   formatDayRange,
 } from '../components/ui'
 import { PotChart } from '../components/PotChart'
+import { DigestCard } from '../components/DigestCard'
 import { fineColor, palette } from '../theme'
 
 /** Podium coloré, neutre au-delà de la 3e place. */
@@ -71,6 +72,10 @@ export const LeaderboardPage = () => {
           </Stack>
         )}
       </Stack>
+
+      {/* Au-dessus du graphique : ce qui s'est passé cette semaine se lit avant
+          la tendance de la saison. */}
+      <DigestCard />
 
       <PotChart
         history={history.data?.points ?? []}

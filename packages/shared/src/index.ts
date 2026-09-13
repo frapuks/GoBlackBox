@@ -701,3 +701,54 @@ export const monthStartsBetween = (after: string, until: string): string[] => {
   }
   return days
 }
+
+// ---------------------------------------------------------------- résumé
+
+/**
+ * Le résumé de la semaine écoulée, du lundi 0 h au dimanche 23 h 59.
+ *
+ * Calculé le lundi matin puis figé : ce que l'équipe a lu ne bouge plus.
+ * Uniquement des noms et des chiffres, jamais d'identifiant à résoudre côté
+ * front — un joueur renommé depuis garde son ancien nom dans le résumé, comme
+ * dans un journal.
+ *
+ * Les cotisations sont tenues à l'écart des totaux : elles tombent sur toute
+ * l'équipe le même jour, et un 1er du mois écraserait tout le reste.
+ */
+export type WeeklyDigest = {
+  /** Lundi, « AAAA-MM-JJ ». */
+  weekStart: string
+  /** Dimanche, « AAAA-MM-JJ ». */
+  weekEnd: string
+
+  /** Amendes et pénalités validées de la semaine, cotisations exclues. */
+  total: number
+  fineCount: number
+  /** Même calcul sur la semaine d'avant. */
+  previousTotal: number
+  /** Semaine strictement la plus chère depuis la première amende de la caisse. */
+  isRecord: boolean
+
+  /** Le plus d'amendes, puis le plus gros montant. null si la semaine est vide. */
+  topPlayer: { name: string; count: number; amount: number } | null
+
+  /** Badges qui ont changé de porteur. `from` null = distinction nouvellement décernée. */
+  badgeChanges: { image: BadgeImage; label: string; to: string; from: string | null }[]
+
+  /** Mouvements marquants : entrées et sorties du podium, plus grosses montée et chute. */
+  rankMoves: { name: string; from: number | null; to: number }[]
+
+  /** Pénalités de retard reçues dans la semaine, par joueur. */
+  penalties: { name: string; count: number; amount: number }[]
+
+  /** Joueurs concernés par les amendes et sans aucune cette semaine. */
+  cleanPlayers: string[]
+  /** La plus longue série de semaines sans amende en cours. null en deçà de deux semaines. */
+  longestStreak: { names: string[]; weeks: number } | null
+
+  /** Montant réglé dans la semaine, cotisations comprises : c'est de l'argent encaissé. */
+  collected: number
+
+  /** La cotisation, seulement si elle est tombée cette semaine. */
+  dues: { label: string; count: number; amount: number } | null
+}

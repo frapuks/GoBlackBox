@@ -10,7 +10,9 @@ import { ruleRoutes } from './routes/rules.js'
 import { fineRoutes } from './routes/fines.js'
 import { settingsRoutes } from './routes/settings.js'
 import { pushRoutes } from './routes/push.js'
+import { digestRoutes } from './routes/digest.js'
 import { startReminders } from './reminders.js'
+import { startDigest } from './digest.js'
 
 const isProduction = process.env.NODE_ENV === 'production'
 
@@ -74,6 +76,7 @@ await app.register(
     await api.register(fineRoutes)
     await api.register(settingsRoutes)
     await api.register(pushRoutes)
+    await api.register(digestRoutes)
   },
   { prefix: '/api' },
 )
@@ -90,6 +93,7 @@ try {
 // Les rappels de cotisation et de pénalité. Démarrés après l'écoute : un
 // minuteur qui échoue ne doit pas empêcher l'app de répondre.
 startReminders((err: unknown) => app.log.error({ err }, 'rappel échoué'))
+startDigest((err: unknown) => app.log.error({ err }, 'résumé de la semaine échoué'))
 
 const shutdown = async () => {
   await app.close()

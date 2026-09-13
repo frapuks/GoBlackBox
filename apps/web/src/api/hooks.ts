@@ -12,6 +12,7 @@ import type {
   ResetPasswordResult,
   Rule,
   RuleCadence,
+  WeeklyDigest,
   RuleContext,
   RuleKind,
   Settings,
@@ -313,3 +314,17 @@ export const useUpdateNotifications = () => {
     onSuccess: (me) => qc.setQueryData(['me'], me),
   })
 }
+
+/**
+ * Le résumé de la semaine écoulée, figé le lundi matin. `null` avant la toute
+ * première publication.
+ *
+ * Mis en cache une heure : il ne change qu'une fois par semaine, inutile de le
+ * redemander à chaque passage sur le classement.
+ */
+export const useDigest = () =>
+  useQuery({
+    queryKey: ['digest'],
+    queryFn: async () => (await apiFetch<{ digest: WeeklyDigest | null }>('/digest')).digest,
+    staleTime: 60 * 60 * 1000,
+  })
