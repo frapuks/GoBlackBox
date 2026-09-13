@@ -15,7 +15,6 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import MenuItem from '@mui/material/MenuItem'
 import AddIcon from '@mui/icons-material/Add'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
@@ -23,13 +22,11 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import GroupsIcon from '@mui/icons-material/Groups'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import {
-  isCadenceLate,
-  RULE_CADENCE_LABEL,
-  WEEKDAY_LABELS,
+  isDuesLate,
+  isPenaltyLate,
   RULE_CONTEXTS,
   RULE_CONTEXT_LABEL,
   type BadgeImage,
-  type RuleCadence,
   type Rule,
   type RuleContext,
   type RuleKind,
@@ -306,25 +303,30 @@ const ApplyRuleCard = ({
               {rule.label}
             </Typography>
             {archived && <Chip size="small" label="Archivée" sx={{ height: 20 }} />}
-            {/* Une cotisation attendue cette période et pas encore appliquée.
-                Rien ne se déclenche tout seul : c'est un rappel, pas un état. */}
-            {isCadenceLate(rule) && <LateBadge />}
+            {/* Rien ne se déclenche tout seul : c'est un rappel, pas un état.
+                La cotisation réclame chaque mois ; la pénalité quand le délai
+                de retard est écoulé depuis sa dernière application, et qu'il reste
+                une amende à majorer. */}
+            {(isPenalty
+              ? isPenaltyLate(rule, lateAfterDays, count > 0)
+              : isDuesLate(rule)) && <LateBadge />}
           </Stack>
 
-          {/* Le rythme se lit sous le libellé : sans lui, « en retard » ne dirait
-              pas en retard de quoi. Le délai suit, sur la pénalité — c'est la
-              seule chose qui dit à partir de quand une amende est en retard, et
-              elle doit rester lisible par tout le monde. */}
-          {(rule.cadence || isPenalty) && (
-            <Typography variant="caption" color="text.secondary">
-              {[
-                rule.cadence && RULE_CADENCE_LABEL[rule.cadence],
-                isPenalty && lateAfterDays && 'en retard après ' + lateAfterDays + ' jours',
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </Typography>
-          )}
+          {/* Sous le libellé, ce qui fait réclamer la règle : sans lui, « en
+              retard » ne dirait pas en retard de quoi. Pour la pénalité, c'est le
+              délai — et il doit rester lisible par tout le monde, puisqu'il dit
+              aussi à partir de quand une amende devient rouge. */}
+          {isPenalty
+            ? lateAfterDays !== undefined && (
+                <Typography variant="caption" color="text.secondary">
+                  En retard après {lateAfterDays} jours
+                </Typography>
+              )
+            : (
+                <Typography variant="caption" color="text.secondary">
+                  Chaque mois
+                </Typography>
+              )}
         </Box>
 
         <Amount amount={rule.amount} state="due" size="lg" />
@@ -561,13 +563,6 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
   // travaillé pour rien.
   const [mode, setMode] = useState<'SIMPLE' | 'TIERS'>('SIMPLE')
   const [badgeIcon, setBadgeIcon] = useState<BadgeImage | null>(null)
-  // Cotisation et pénalité : le rythme attendu, ou null pour ne rien réclamer.
-  const [cadence, setCadence] = useState<RuleCadence | null>(null)
-  // Le créneau du rappel, en chaînes : les champs restent vides tant que rien
-  // n'est choisi, ce qu'un nombre ne sait pas représenter.
-  const [reminderDay, setReminderDay] = useState('')
-  const [reminderHour, setReminderHour] = useState('')
-  const [reminderMinute, setReminderMinute] = useState('0')
   // Le délai de retard vit dans les réglages de la caisse, pas sur la règle :
   // il décide de la couleur de CHAQUE amende, pas seulement des pénalités. Il
   // se modifie ici parce que c'est le seul endroit où il veut dire quelque
@@ -586,10 +581,6 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
     setTiers((rule?.tiers ?? []).map((t) => ({ label: t.label, amount: String(t.amount) })))
     setMode(rule?.tiers.length ? 'TIERS' : 'SIMPLE')
     setBadgeIcon(rule?.badgeIcon ?? null)
-    setCadence(rule?.cadence ?? null)
-    setReminderDay(rule?.reminderDay ? String(rule.reminderDay) : '')
-    setReminderHour(rule?.reminderHour != null ? String(rule.reminderHour) : '')
-    setReminderMinute(String(rule?.reminderMinute ?? 0))
     setLateDays(String(settings.data?.lateAfterDays ?? 30))
     setArchived(rule?.archivedAt != null)
   }, [target, rule, isDues, settings.data?.lateAfterDays])
@@ -608,13 +599,6 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
   // Les deux états cohabitent en mémoire : basculer d'un mode à l'autre puis
   // revenir ne perd rien. C'est la soumission qui tranche.
   const incomplete = mode === 'TIERS' && cleanTiers.length === 0
-
-  // Un rappel n'existe qu'entier : sans jour ou sans heure, il ne saurait pas
-  // quand partir, et les deux repartent à vide.
-  const reminder =
-    cadence && reminderDay && reminderHour !== ''
-      ? { day: Number(reminderDay), hour: Number(reminderHour), minute: Number(reminderMinute) }
-      : { day: null, hour: null, minute: null }
 
   // Vrai seulement quand la validation va RETIRER la règle des écrans.
   const archiving = archived && rule?.archivedAt == null
@@ -639,10 +623,6 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
           amount: cleanTiers.length ? 0 : Number(amount),
           context,
           badgeIcon,
-          cadence,
-          reminderDay: reminder.day,
-          reminderHour: reminder.hour,
-          reminderMinute: reminder.minute,
           tiers: cleanTiers,
           archived,
         },
@@ -657,10 +637,6 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
           kind,
           context,
           badgeIcon,
-          cadence,
-          reminderDay: reminder.day,
-          reminderHour: reminder.hour,
-          reminderMinute: reminder.minute,
           tiers: cleanTiers,
         },
         { onSuccess: onClose },
@@ -814,104 +790,6 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
               onChange={(e) => setLateDays(e.target.value)}
               inputProps={{ min: 1, max: 365 }}
             />
-          )}
-
-          {/* Le rythme n'a de sens que sur ce qu'on applique à date : rien
-              d'autre n'est attendu périodiquement. « Aucun » est un choix à part
-              entière — une cotisation ponctuelle ne doit rien réclamer. */}
-          {kind !== 'FINE' && (
-            <Stack spacing={0.5}>
-              <Typography variant="overline" color="text.secondary">
-                Rythme attendu
-              </Typography>
-              <ToggleButtonGroup
-                exclusive
-                fullWidth
-                size="small"
-                value={cadence}
-                onChange={(_, v: RuleCadence | null) => setCadence(v)}
-              >
-                <ToggleButton value="WEEK">{RULE_CADENCE_LABEL.WEEK}</ToggleButton>
-                <ToggleButton value="MONTH">{RULE_CADENCE_LABEL.MONTH}</ToggleButton>
-              </ToggleButtonGroup>
-            </Stack>
-          )}
-
-
-          {/* Le créneau du rappel, sous le rythme dont il dépend. La règle
-              porte ainsi tout ce qui la concerne : son délai, son rythme et le
-              moment où elle réclame.
-
-              Une heure commune à toute l'équipe, et non une par personne :
-              appliquer la cotisation est un geste collectif, un seul
-              gestionnaire le fait pour tout le monde. Chacun garde le choix de
-              recevoir ce rappel ou non, dans ses propres réglages. */}
-          {cadence && (
-            <Stack spacing={1}>
-              <Typography variant="overline" color="text.secondary">
-                Rappel aux gestionnaires
-              </Typography>
-
-              {/* Le jour occupe sa propre ligne : « Mercredi » ne tient pas dans
-                  un tiers de largeur sur un téléphone, et se faisait tronquer. */}
-              <TextField
-                select
-                size="small"
-                fullWidth
-                label={cadence === 'WEEK' ? 'Jour' : 'Jour du mois'}
-                value={reminderDay}
-                onChange={(e) => setReminderDay(e.target.value)}
-              >
-                <MenuItem value="">Aucun rappel</MenuItem>
-                {cadence === 'WEEK'
-                  ? WEEKDAY_LABELS.map((d, i) => (
-                      <MenuItem key={d} value={String(i + 1)}>
-                        {d}
-                      </MenuItem>
-                    ))
-                  : // Plafonné à 28 pour que le créneau existe en février aussi.
-                    Array.from({ length: 28 }, (_, i) => (
-                      <MenuItem key={i} value={String(i + 1)}>
-                        {i + 1}
-                      </MenuItem>
-                    ))}
-              </TextField>
-
-              <Stack direction="row" spacing={1}>
-                <TextField
-                  select
-                  size="small"
-                  label="Heure"
-                  value={reminderHour}
-                  onChange={(e) => setReminderHour(e.target.value)}
-                  sx={{ flex: 1 }}
-                >
-                  {Array.from({ length: 24 }, (_, h) => (
-                    <MenuItem key={h} value={String(h)}>
-                      {h} h
-                    </MenuItem>
-                  ))}
-                </TextField>
-
-                {/* Par pas de cinq minutes : douze entrées suffisent à tous les
-                    créneaux plausibles, là où une liste de soixante se ferait
-                    dérouler pour rien. */}
-                <TextField
-                  select
-                  size="small"
-                  label="Minutes"
-                  value={reminderMinute}
-                  onChange={(e) => setReminderMinute(e.target.value)}
-                  sx={{ flex: 1 }}
-                >
-                  {Array.from({ length: 12 }, (_, i) => i * 5).map((m) => (
-                    <MenuItem key={m} value={String(m)}>
-                      {String(m).padStart(2, '0')}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Stack>
-            </Stack>
           )}
 
           {/* Ouvert à tous les types de règle, cotisation et pénalité de

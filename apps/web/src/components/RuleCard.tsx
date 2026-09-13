@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Box, Chip, Collapse, IconButton, Stack, Typography } from '@mui/material'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
-import { isCadenceLate, RULE_CADENCE_LABEL, type Rule } from '@blackbox/shared'
-import { Amount, Card, LateBadge, RuleAmount } from './ui'
+import type { Rule } from '@blackbox/shared'
+import { Amount, Card, RuleAmount } from './ui'
 import { palette } from '../theme'
 
 /**
@@ -72,18 +72,7 @@ export const RuleCard = ({
               {rule.label}
             </Typography>
             {archived && <Chip size="small" label="Archivée" sx={{ height: 20 }} />}
-            {/* Une cotisation attendue cette période et pas encore appliquée.
-                Rien ne se déclenche tout seul : c'est un rappel, pas un état. */}
-            {isCadenceLate(rule) && <LateBadge />}
           </Stack>
-
-          {/* Le rythme se lit sous le libellé : sans lui, « en retard » ne dirait
-              pas en retard de quoi. */}
-          {rule.cadence && (
-            <Typography variant="caption" color="text.secondary">
-              {RULE_CADENCE_LABEL[rule.cadence]}
-            </Typography>
-          )}
         </Box>
 
         <RuleAmount amount={rule.amount} tiers={rule.tiers} />

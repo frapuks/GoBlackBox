@@ -336,26 +336,12 @@ export const RULE_CONTEXT_LABEL: Record<RuleContext, string> = {
   OTHER: 'Autres',
 }
 
-/**
- * Rythme attendu d'une cotisation ou d'une pénalité de retard.
- *
- * Rien ne se déclenche tout seul : personne n'encaisse à la place du trésorier,
- * et une cotisation créée automatiquement serait à annuler la moitié du temps.
- * Le rythme sert donc uniquement à RAPPELER — la règle se marque « en retard »
- * tant qu'elle n'a pas été appliquée dans la période en cours.
- */
-export const RULE_CADENCES = ['WEEK', 'MONTH'] as const
-export const ruleCadenceSchema = z.enum(RULE_CADENCES)
-export type RuleCadence = z.infer<typeof ruleCadenceSchema>
-
-export const RULE_CADENCE_LABEL: Record<RuleCadence, string> = {
-  WEEK: 'Chaque semaine',
-  MONTH: 'Chaque mois',
-}
+/** Une période de rappel : la semaine du résumé, ou le mois de la cotisation. */
+export type PeriodUnit = 'WEEK' | 'MONTH'
 
 /** Le début de la période en cours : lundi, ou le 1er du mois. */
-export const periodStart = (cadence: RuleCadence, now: Date) => {
-  if (cadence === 'MONTH') return new Date(now.getFullYear(), now.getMonth(), 1)
+export const periodStart = (unit: PeriodUnit, now: Date) => {
+  if (unit === 'MONTH') return new Date(now.getFullYear(), now.getMonth(), 1)
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   // `getDay()` compte à partir du dimanche ; la semaine française commence le
   // lundi, d'où le décalage.
@@ -364,72 +350,49 @@ export const periodStart = (cadence: RuleCadence, now: Date) => {
 }
 
 /**
- * Une cotisation attendue dans la période en cours, et pas encore appliquée.
+ * La cotisation du mois n'a pas encore été appliquée.
+ *
+ * Toujours mensuelle : aucun rythme à régler. Rien ne se déclenche tout seul —
+ * personne n'encaisse à la place du trésorier —, la règle se marque seulement
+ * « en retard » tant qu'aucune application ne date du mois en cours.
  *
  * Ici plutôt que dans une requête : la règle porte déjà sa dernière date
- * d'application, et la comparaison se fait dans le fuseau de celui qui regarde
- * — c'est son mois et sa semaine à lui qui comptent, pas ceux du serveur.
- *
- * Le rythme n'a de sens que sur ce qu'on applique à date : une cotisation, ou
- * la pénalité de retard qu'on passe en revue périodiquement. Une infraction
- * n'est « en retard » de rien — elle tombe quand quelqu'un la commet.
+ * d'application, et la comparaison se fait dans le fuseau de celui qui regarde.
  */
-export const isCadenceLate = (
-  rule: { kind: RuleKind; cadence: RuleCadence | null; lastAppliedAt: string | null },
+export const isDuesLate = (
+  rule: { kind: RuleKind; lastAppliedAt: string | null },
   now = new Date(),
 ) => {
-  if (rule.kind === 'FINE' || !rule.cadence) return false
+  if (rule.kind !== 'DUES') return false
   if (!rule.lastAppliedAt) return true
-  return new Date(rule.lastAppliedAt) < periodStart(rule.cadence, now)
+  return new Date(rule.lastAppliedAt) < periodStart('MONTH', now)
 }
 
 /**
- * Jours de la semaine, lundi en tête — l'ordre français, et celui de la période.
- * L'indice dans ce tableau plus un donne la valeur stockée : 1 = lundi.
- */
-export const WEEKDAY_LABELS = [
-  'Lundi',
-  'Mardi',
-  'Mercredi',
-  'Jeudi',
-  'Vendredi',
-  'Samedi',
-  'Dimanche',
-] as const
-
-/**
- * Le moment du rappel dans la période en cours.
+ * La pénalité de retard est à appliquer.
  *
- * `day` se lit selon le rythme : 1 à 7 pour une semaine — 1 = lundi —, 1 à 28
- * pour un mois. Plafonné à 28 pour que le créneau existe en février aussi.
+ * Deux conditions :
+ *  1. le délai de retard est écoulé depuis la dernière application — ou elle
+ *     n'a jamais été appliquée. Même comparaison de dates calendaires que pour
+ *     les amendes : appliquée un lundi avec un délai de 7 jours, elle redevient
+ *     à appliquer le lundi suivant ;
+ *  2. il y a au moins une amende à majorer. Sans elle, la règle afficherait
+ *     « en retard » à côté d'un bouton désactivé, et le rappel réclamerait un
+ *     geste impossible.
  */
-export const reminderSlot = (
-  cadence: RuleCadence,
-  day: number,
-  hour: number,
-  minute: number,
+export const isPenaltyLate = (
+  rule: { kind: RuleKind; lastAppliedAt: string | null },
+  lateAfterDays: number | undefined,
+  hasFinesToPenalize: boolean,
   now = new Date(),
 ) => {
-  const slot = new Date(now)
-  if (cadence === 'MONTH') {
-    slot.setDate(day)
-  } else {
-    // `getDay()` compte à partir du dimanche ; on ramène lundi à 1.
-    const today = ((slot.getDay() + 6) % 7) + 1
-    slot.setDate(slot.getDate() + (day - today))
-  }
-  slot.setHours(hour, minute, 0, 0)
-  return slot
+  if (rule.kind !== 'PENALTY' || lateAfterDays === undefined || !hasFinesToPenalize) return false
+  if (!rule.lastAppliedAt) return true
+  const due = new Date(rule.lastAppliedAt)
+  due.setHours(0, 0, 0, 0)
+  due.setDate(due.getDate() + lateAfterDays)
+  return due <= now
 }
-
-/** « Lundi à 19 h 30 ». L'heure pile s'écrit sans minutes. */
-export const reminderLabel = (cadence: RuleCadence, day: number, hour: number, minute = 0) => {
-  const time = minute ? `${hour} h ${String(minute).padStart(2, '0')}` : `${hour} h`
-  return cadence === 'WEEK'
-    ? `${WEEKDAY_LABELS[day - 1]} à ${time}`
-    : `Le ${day === 1 ? '1er' : day} du mois à ${time}`
-}
-
 /**
  * Un palier d'une règle : « 0 à 5 min », « récidive »… Libellé libre, donc le
  * mécanisme ne se limite pas aux durées.
@@ -444,12 +407,6 @@ export const createRuleInput = z.object({
   amount: amountSchema,
   /** Icône du badge décerné au champion. Absente = la règle n'en décerne pas. */
   badgeIcon: badgeImageSchema.nullable().optional(),
-  /** Rythme attendu — cotisations uniquement, ignoré ailleurs. */
-  cadence: ruleCadenceSchema.nullable().optional(),
-  /** Moment du rappel. Sans rythme, ils n'ont pas de sens et sont ignorés. */
-  reminderDay: z.number().int().min(1).max(28).nullable().optional(),
-  reminderHour: z.number().int().min(0).max(23).nullable().optional(),
-  reminderMinute: z.number().int().min(0).max(59).nullable().optional(),
   kind: ruleKindSchema.default('FINE'),
   context: ruleContextSchema.default('OTHER'),
   tiers: z.array(ruleTierInput).max(10).default([]),
@@ -460,10 +417,6 @@ export const updateRuleInput = z.object({
   description: z.string().trim().max(300).nullable().optional(),
   amount: amountSchema.optional(),
   badgeIcon: badgeImageSchema.nullable().optional(),
-  cadence: ruleCadenceSchema.nullable().optional(),
-  reminderDay: z.number().int().min(1).max(28).nullable().optional(),
-  reminderHour: z.number().int().min(0).max(23).nullable().optional(),
-  reminderMinute: z.number().int().min(0).max(59).nullable().optional(),
   context: ruleContextSchema.optional(),
   /** Remplace l'intégralité des paliers. Absent = paliers inchangés. */
   tiers: z.array(ruleTierInput).max(10).optional(),
@@ -479,12 +432,6 @@ export type Rule = {
   context: RuleContext
   /** Icône du badge que porte le champion de cette règle. */
   badgeIcon: BadgeImage | null
-  /** Rythme attendu d'une cotisation. null = aucun rappel. */
-  cadence: RuleCadence | null
-  /** Moment du rappel dans la période. null = pas de rappel programmé. */
-  reminderDay: number | null
-  reminderHour: number | null
-  reminderMinute: number | null
   /** Vide = règle à montant unique. Sinon, c'est le palier qui porte le montant. */
   tiers: RuleTier[]
   archivedAt: string | null

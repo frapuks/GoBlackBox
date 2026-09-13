@@ -11,7 +11,6 @@ import type {
   PotHistory,
   ResetPasswordResult,
   Rule,
-  RuleCadence,
   WeeklyDigest,
   RuleContext,
   RuleKind,
@@ -190,10 +189,6 @@ export const useCreateRule = () =>
       kind: RuleKind
       context: RuleContext
       badgeIcon?: BadgeImage | null
-      cadence?: RuleCadence | null
-      reminderDay?: number | null
-      reminderHour?: number | null
-      reminderMinute?: number | null
       tiers: { label: string; amount: number }[]
     }) => post<Rule>('/rules', v),
   )
@@ -211,10 +206,6 @@ export const useUpdateRule = () =>
       amount?: number
       context?: RuleContext
       badgeIcon?: BadgeImage | null
-      cadence?: RuleCadence | null
-      reminderDay?: number | null
-      reminderHour?: number | null
-      reminderMinute?: number | null
       tiers?: { label: string; amount: number }[]
       archived?: boolean
     }) => {
