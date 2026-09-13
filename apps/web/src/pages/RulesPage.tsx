@@ -313,9 +313,8 @@ const ApplyRuleCard = ({
           dernière application et bouton d'application vivent dans le panneau. */}
       <Box
         onClick={() => setOpen((v) => !v)}
-        sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 2, cursor: 'pointer' }}
+        sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 2, cursor: 'pointer' }}
       >
-        <KindIcon kind={rule.kind} />
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" spacing={1} alignItems="center">
             <Typography
@@ -430,42 +429,12 @@ const ApplyRuleCard = ({
   )
 }
 
-/**
- * L'emblème d'une pénalité ou d'une cotisation, en tête de sa ligne.
- *
- * Il distingue les deux d'un coup d'oeil, et les distingue surtout des règles,
- * qui n'en ont pas. Rouge pour la pénalité, jaune pour la cotisation : les
- * couleurs de « en retard » et de « à payer », puisque c'est ce qu'elles créent.
- */
-const KindIcon = ({ kind }: { kind: RuleKind }) => {
-  const isPenalty = kind === 'PENALTY'
-  const color = isPenalty ? palette.danger : palette.accentSoft
-  return (
-    <Box
-      sx={{
-        width: 36,
-        height: 36,
-        flexShrink: 0,
-        borderRadius: '50%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color,
-        bgcolor: isPenalty ? 'rgba(239,68,68,0.14)' : 'rgba(250,204,21,0.14)',
-      }}
-    >
-      {isPenalty ? <ReportProblemIcon fontSize="small" /> : <GroupsIcon fontSize="small" />}
-    </Box>
-  )
-}
-
 /** La place d'une pénalité ou d'une cotisation pas encore créée. Gestionnaires seulement. */
 const AddApplyRow = ({ kind, onClick }: { kind: RuleKind; onClick: () => void }) => (
   <ButtonBase
     onClick={onClick}
-    sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1.5, p: 2, textAlign: 'left' }}
+    sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1, p: 2, textAlign: 'left' }}
   >
-    <KindIcon kind={kind} />
     <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
       {kind === 'PENALTY' ? 'Ajouter une pénalité de retard' : 'Ajouter une cotisation'}
     </Typography>
