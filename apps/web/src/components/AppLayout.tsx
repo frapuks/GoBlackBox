@@ -103,8 +103,9 @@ export const AppLayout = () => {
           <NavItem key={tab.to} {...tab} active={pathname === tab.to} />
         ))}
 
-        {/* Bouton d'action central, réservé aux gestionnaires. Absent pour un
-            joueur, les quatre onglets se répartissent toute la largeur. */}
+        {/* Bouton d'action central : les gestionnaires saisissent, les joueurs
+            signalent quand la fonctionnalité est activée. Absent sinon, et les
+            quatre onglets se répartissent alors toute la largeur. */}
         {entry.allowed && (
           <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
             <Fab

@@ -54,10 +54,13 @@ const RedirectIfAuthenticated = ({ children }: { children: React.ReactNode }) =>
 }
 
 /**
- * L'API refuse déjà la création d'amende à un joueur (403). Cette garde évite
- * simplement de lui laisser remplir trois étapes avant de se heurter au refus.
+ * Accès à l'écran de saisie : les gestionnaires, et les joueurs quand les
+ * signalements sont activés.
+ *
+ * L'API refuse déjà un joueur non autorisé (403). Cette garde évite seulement
+ * de lui laisser remplir trois étapes avant de se heurter au refus.
  */
-const RequireStaff = () => {
+const RequireFineEntry = () => {
   const entry = useFineEntry()
   // Tant que les réglages chargent, on ne renvoie personne : sinon un joueur
   // autorisé serait éjecté le temps d une requête.
@@ -104,7 +107,7 @@ export const App = () => (
           <Route path="/rules" element={<RulesPage />} />
           <Route path="/me/settings" element={<SettingsPage />} />
           <Route path="/members/:id" element={<MemberPage />} />
-          <Route element={<RequireStaff />}>
+          <Route element={<RequireFineEntry />}>
             <Route path="/fines/new" element={<AddFinePage />} />
           </Route>
           {/* Ancienne adresse : les raccourcis déjà installés continuent de marcher. */}
