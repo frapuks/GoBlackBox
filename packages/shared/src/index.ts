@@ -694,3 +694,18 @@ export type WeeklyDigest = {
   /** La cotisation, seulement si elle est tombée cette semaine. */
   dues: { label: string; count: number; amount: number } | null
 }
+
+/**
+ * Le classement d'une règle qui décerne un badge : qui le porte, et où en sont
+ * les autres.
+ *
+ * Trié par le serveur avec exactement le même départage que le badge — le
+ * premier de la liste EST le porteur. Seuls figurent les joueurs qui ont reçu
+ * au moins une amende de cette règle.
+ */
+export type RuleRankingEntry = {
+  memberId: number
+  name: string
+  count: number
+  amount: number
+}

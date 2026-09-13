@@ -14,6 +14,7 @@ import type {
   WeeklyDigest,
   RuleContext,
   RuleKind,
+  RuleRankingEntry,
   Settings,
   SignupContext,
 } from '@blackbox/shared'
@@ -318,4 +319,16 @@ export const useDigest = () =>
     queryKey: ['digest'],
     queryFn: async () => (await apiFetch<{ digest: WeeklyDigest | null }>('/digest')).digest,
     staleTime: 60 * 60 * 1000,
+  })
+
+/**
+ * Le classement d'une règle qui décerne un badge.
+ *
+ * Chargé seulement quand on le demande : il s'affiche dans une carte dépliée,
+ * et une liste de règles fermées ne doit pas déclencher une requête par règle.
+ */
+export const useRuleRanking = (ruleId: number) =>
+  useQuery({
+    queryKey: ['rules', ruleId, 'ranking'],
+    queryFn: () => apiFetch<RuleRankingEntry[]>(`/rules/${ruleId}/ranking`),
   })

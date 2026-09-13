@@ -3,6 +3,7 @@ import { Box, Chip, Collapse, IconButton, Stack, Typography } from '@mui/materia
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import type { Rule } from '@blackbox/shared'
 import { Amount, Card, RuleAmount } from './ui'
+import { RuleRanking } from './RuleRanking'
 import { palette } from '../theme'
 
 /**
@@ -22,15 +23,22 @@ export const RuleCard = ({
   onSelect,
   action,
   selected = false,
+  showRanking = false,
 }: {
   rule: Rule
   onSelect?: (ruleId: number, tierId?: number) => void
   action?: React.ReactNode
   /** Vrai à l'ajout d'amende, sur la règle retenue tant qu'elle n'est pas validée. */
   selected?: boolean
+  /**
+   * La course au badge dans les détails. Faux à l'ajout d'amende : on y choisit
+   * une règle debout au bord du terrain, pas le moment de consulter un palmarès.
+   */
+  showRanking?: boolean
 }) => {
   const hasTiers = rule.tiers.length > 0
-  const expandable = hasTiers || Boolean(rule.description)
+  const ranking = showRanking && rule.badgeIcon !== null
+  const expandable = hasTiers || Boolean(rule.description) || ranking
   const [open, setOpen] = useState(false)
   const archived = rule.archivedAt !== null
 
@@ -127,6 +135,8 @@ export const RuleCard = ({
               <Amount amount={t.amount} state="due" />
             </Box>
           ))}
+
+          {ranking && <RuleRanking ruleId={rule.id} badge={rule.badgeIcon!} />}
         </Box>
       </Collapse>
     </Card>

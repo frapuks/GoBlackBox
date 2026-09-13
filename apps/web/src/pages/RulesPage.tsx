@@ -45,6 +45,7 @@ import {
 import { Amount, Card, EmptyState, LateBadge, SectionTitle, formatDate } from '../components/ui'
 import { BadgeField } from '../components/badges'
 import { RuleCard } from '../components/RuleCard'
+import { RuleRanking } from '../components/RuleRanking'
 import { ToggleButton, ToggleButtonGroup } from '@mui/material'
 import { palette } from '../theme'
 
@@ -162,6 +163,7 @@ export const RulesPage = () => {
                 <RuleCard
                   key={r.id}
                   rule={r}
+                  showRanking
                   action={
                     isStaff ? (
                       <IconButton size="small" aria-label="Modifier" onClick={() => setEditing(r)}>
@@ -414,6 +416,9 @@ const ApplyRuleCard = ({
             </Button>
           )}
         </Box>
+
+        {/* Sous le bouton : appliquer est l'action, le palmarès se consulte. */}
+        {rule.badgeIcon && <RuleRanking ruleId={rule.id} badge={rule.badgeIcon} />}
       </Collapse>
 
       <ApplyDialog

@@ -7,10 +7,12 @@ import {
   type Rule,
   type RuleContext,
   type RuleKind,
+  type RuleRankingEntry,
   type RuleTier,
 } from '@blackbox/shared'
 import { query, queryOne, transaction } from '../db.js'
 import { IS_PENALIZABLE_SQL } from '../queries.js'
+import { CHAMPION_ORDER, playerTotalsJoin } from '../badges.js'
 import { notifyNewFines } from '../push.js'
 
 type RuleRow = {
@@ -204,6 +206,33 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
    * client : DUES vise toute l'équipe, PENALTY les seuls retardataires.
    * Un front pas à jour ne peut donc pas débiter les mauvaises personnes.
    */
+  /**
+   * Le classement d'une règle : chaque joueur qui en a reçu au moins une, trié
+   * par le départage du badge.
+   *
+   * Même fragment d'ordre que le calcul du porteur, pas une copie : le premier
+   * de cette liste est donc toujours celui qui porte le badge, et une évolution
+   * du départage s'applique aux deux d'un coup.
+   */
+  app.get('/rules/:id/ranking', auth, async (req): Promise<RuleRankingEntry[]> => {
+    const id = Number((req.params as { id: string }).id)
+    if (!Number.isInteger(id) || id <= 0) throw app.httpErrors.badRequest('Identifiant invalide')
+
+    return query<RuleRankingEntry>(
+      `SELECT f.member_id          AS "memberId",
+              m.display_name       AS name,
+              COUNT(*)::int        AS count,
+              SUM(f.amount)::int   AS amount
+         FROM fines f
+         JOIN members m ON m.id = f.member_id
+         ${playerTotalsJoin(false)}
+        WHERE f.status = 'CONFIRMED' AND f.rule_id = $1
+        GROUP BY f.member_id, m.display_name, totals.all_fines
+        ORDER BY${CHAMPION_ORDER}`,
+      [id],
+    )
+  })
+
   app.post('/rules/:id/apply', staff, async (req): Promise<ApplyRuleResult> => {
     const id = Number((req.params as { id: string }).id)
     if (!Number.isInteger(id) || id <= 0) throw app.httpErrors.badRequest('Identifiant invalide')

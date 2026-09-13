@@ -54,19 +54,14 @@ type ChampionRow = {
  * `DISTINCT ON` retient la première ligne de chaque règle une fois l'ordre posé :
  * c'est exactement « l'argmax », sans sous-requête.
  */
-const championsSql = (cutoff: boolean) => `
-  SELECT DISTINCT ON (f.rule_id)
-         f.member_id,
-         r.badge_icon                AS icon,
-         r.label                     AS rule_label,
-         r.context                   AS rule_context,
-         COUNT(*)::int               AS fines,
-         SUM(f.amount)::int          AS euros
-    FROM fines f
-    JOIN rules r ON r.id = f.rule_id
-    -- Le nombre total d'amendes de chaque joueur, pour le troisième critère.
-    -- Cotisations exclues, comme partout où l'on parle d'amendes : elles
-    -- tombent sur tout le monde et ne disent rien du comportement.
+/**
+ * Le nombre total d'amendes de chaque joueur, pour le troisième critère.
+ * Cotisations exclues, comme partout où l'on parle d'amendes : elles tombent
+ * sur tout le monde et ne disent rien du comportement.
+ *
+ * Attend un `f` dans la requête appelante ; expose `totals.all_fines`.
+ */
+export const playerTotalsJoin = (cutoff: boolean) => `
     LEFT JOIN (
       SELECT g.member_id, COUNT(*)::int AS all_fines
         FROM fines g
@@ -75,19 +70,14 @@ const championsSql = (cutoff: boolean) => `
          AND (gr.kind IS NULL OR gr.kind <> 'DUES')
          ${cutoff ? 'AND g.created_at < $1' : ''}
        GROUP BY g.member_id
-    ) totals ON totals.member_id = f.member_id
-   WHERE f.status = 'CONFIRMED'
-     AND r.badge_icon IS NOT NULL
-     -- Une règle archivée ne décerne plus rien : elle ne se donne plus, donc
-     -- son champion est figé et le badge n'a plus de sens.
-     --
-     -- Filtré ici plutôt qu'en effaçant l'icône à l'archivage : rien dans ce
-     -- système n'est stocké, et l'archivage se défait. Désarchiver rend donc le
-     -- badge, au lieu d'obliger à rechoisir l'icône.
-     AND r.archived_at IS NULL
-     ${cutoff ? 'AND f.created_at < $1' : ''}
-   GROUP BY f.rule_id, f.member_id, r.badge_icon, r.label, r.context, totals.all_fines
-   ORDER BY f.rule_id,
+    ) totals ON totals.member_id = f.member_id`
+
+/**
+ * L'ordre du départage, partagé entre le porteur du badge et le classement de
+ * la règle : les deux ne peuvent donc jamais désigner deux premiers différents.
+ * S'emploie sur des lignes groupées par joueur, avec `playerTotalsJoin`.
+ */
+export const CHAMPION_ORDER = `
             COUNT(*) DESC,
             SUM(f.amount) DESC,
             -- À égalité sur la règle, le joueur qui a le MOINS d'amendes au total :
@@ -103,7 +93,31 @@ const championsSql = (cutoff: boolean) => `
             -- parfaite se disputaient le badge au hasard d'une lecture à
             -- l'autre — et le résumé de la semaine y voyait un changement de
             -- porteur qui n'avait jamais eu lieu.
-            MIN(f.id) ASC
+            MIN(f.id) ASC`
+
+const championsSql = (cutoff: boolean) => `
+  SELECT DISTINCT ON (f.rule_id)
+         f.member_id,
+         r.badge_icon                AS icon,
+         r.label                     AS rule_label,
+         r.context                   AS rule_context,
+         COUNT(*)::int               AS fines,
+         SUM(f.amount)::int          AS euros
+    FROM fines f
+    JOIN rules r ON r.id = f.rule_id
+    ${playerTotalsJoin(cutoff)}
+   WHERE f.status = 'CONFIRMED'
+     AND r.badge_icon IS NOT NULL
+     -- Une règle archivée ne décerne plus rien : elle ne se donne plus, donc
+     -- son champion est figé et le badge n'a plus de sens.
+     --
+     -- Filtré ici plutôt qu'en effaçant l'icône à l'archivage : rien dans ce
+     -- système n'est stocké, et l'archivage se défait. Désarchiver rend donc le
+     -- badge, au lieu d'obliger à rechoisir l'icône.
+     AND r.archived_at IS NULL
+     ${cutoff ? 'AND f.created_at < $1' : ''}
+   GROUP BY f.rule_id, f.member_id, r.badge_icon, r.label, r.context, totals.all_fines
+   ORDER BY f.rule_id,${CHAMPION_ORDER}
 `
 
 /**

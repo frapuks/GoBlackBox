@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Box, CircularProgress, Stack, Typography } from '@mui/material'
 import { rankedMembers } from '@blackbox/shared'
-import { useDashboard, usePotHistory, useSettings } from '../api/hooks'
+import { useDashboard, useMe, usePotHistory, useSettings } from '../api/hooks'
 import {
   Card,
   EmptyState,
@@ -15,7 +15,7 @@ import {
 } from '../components/ui'
 import { PotChart } from '../components/PotChart'
 import { DigestCard } from '../components/DigestCard'
-import { fineColor, palette } from '../theme'
+import { fineColor, palette, SELF_HIGHLIGHT } from '../theme'
 
 /** Podium coloré, neutre au-delà de la 3e place. */
 const rankColor = (rank: number) =>
@@ -30,6 +30,8 @@ const rankColor = (rank: number) =>
 export const LeaderboardPage = () => {
   const navigate = useNavigate()
   const { data, isPending } = useDashboard()
+  // Le joueur qui regarde se repère dans la liste sans avoir à la parcourir.
+  const myMemberId = useMe().data?.member?.id
   const settings = useSettings()
   const history = usePotHistory()
 
@@ -106,6 +108,7 @@ export const LeaderboardPage = () => {
                 // faisait plus qu'assombrir des lignes au hasard du podium.
                 // Ce qui reste dû se lit sous le nom, en couleur.
                 borderLeft: '3px solid ' + rankColor(rank),
+                ...(m.id === myMemberId && { bgcolor: SELF_HIGHLIGHT }),
               }}
               onClick={() => navigate('/members/' + m.id)}
             >
@@ -119,7 +122,10 @@ export const LeaderboardPage = () => {
               <ProfileAvatar name={m.displayName} badges={m.badges} size={56} />
 
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <MemberName name={m.displayName} />
+                <MemberName
+                  name={m.displayName}
+                  sx={m.id === myMemberId ? { color: palette.accent } : undefined}
+                />
                 {/* Le détail sous le nom : le gros chiffre étant désormais le
                     total, il faut bien dire quelque part ce qui reste dû. */}
                 <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">

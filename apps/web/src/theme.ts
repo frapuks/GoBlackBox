@@ -9,6 +9,15 @@ import '@fontsource/inter/400.css'
 import '@fontsource/inter/500.css'
 import '@fontsource/inter/700.css'
 
+/**
+ * Le fond de la ligne du joueur qui regarde, dans les classements.
+ *
+ * Une teinte, pas une couleur d'état : on se repère dans la liste sans que la
+ * ligne ait l'air sélectionnée ni en retard. Plus pâle que la sélection de
+ * l'écran d'ajout, qui garde sa bordure en plus.
+ */
+export const SELF_HIGHLIGHT = 'rgba(249,115,22,0.10)'
+
 export const palette = {
   accent: '#F97316',
   accentSoft: '#FACC15',
