@@ -10,19 +10,13 @@ import type { Fine, FineStatus, MemberSummary, Role } from '@blackbox/shared'
  * Une amende impayée est « en retard » quand sa date de création + N jours
  * est atteinte, N venant de settings.late_after_days.
  *
- * Le retard n'existe QUE si la fonctionnalité est active : la condition est
- * ici, dans le fragment partagé, et non dans chaque écran. Couper les
- * pénalités fait donc disparaître tous les badges d'un coup — fil, classement,
- * fiches membres — sans qu'aucun composant n'ait à s'en soucier.
- *
  * On compare des DATES calendaires, pas des durées : une amende du lundi
  * bascule à minuit le lundi suivant, pas à l'heure exacte de saisie.
  * Le AT TIME ZONE est indispensable des deux côtés — sans lui une amende
  * saisie à 23 h en été est datée du lendemain en UTC et bascule un jour trop tard.
  */
 export const IS_LATE_SQL = `
-  s.enable_penalties
-  AND f.status = 'CONFIRMED'
+  f.status = 'CONFIRMED'
   AND f.paid_at IS NULL
   AND (f.created_at AT TIME ZONE 'Europe/Paris')::date + s.late_after_days
       <= (NOW() AT TIME ZONE 'Europe/Paris')::date

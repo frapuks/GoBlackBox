@@ -272,7 +272,7 @@ export const useUpdateBadges = () =>
 /** Interrupteurs de fonctionnalité : route distincte, réservée à l'admin. */
 export const useUpdateFeatures = () =>
   useDataMutation(
-    (v: { allowPlayerReports?: boolean; enablePenalties?: boolean; enableDues?: boolean }) =>
+    (v: { allowPlayerReports?: boolean }) =>
       patch<Settings>('/settings/features', v),
   )
 

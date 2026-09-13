@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   Box,
   Button,
+  ButtonBase,
   Chip,
   Collapse,
   Dialog,
@@ -55,7 +56,6 @@ export const RulesPage = () => {
   const [editing, setEditing] = useState<DialogTarget>(null)
 
   const me = useMe()
-  const settings = useSettings()
 
   const isStaff = me.data?.user.role === 'ADMIN' || me.data?.user.role === 'MANAGER'
 
@@ -67,8 +67,6 @@ export const RulesPage = () => {
 
   // Sections coupées par l'admin : on masque plutôt que de laisser un titre
   // et un bouton pour une fonctionnalité que l'équipe n'utilise pas.
-  const showPenalties = settings.data?.enablePenalties !== false
-  const showDues = settings.data?.enableDues !== false
 
   // Les trois sections ne montrent que l'actif, quel que soit l'interrupteur :
   // une règle archivée n'a rien à faire au milieu de celles qu'on applique.
@@ -80,43 +78,62 @@ export const RulesPage = () => {
   const penalties = active.filter((r) => r.kind === 'PENALTY')
   const fines = active.filter((r) => r.kind === 'FINE')
 
+  // Une seule pénalité, une seule cotisation. Absente, sa place devient une
+  // ligne d'ajout pour les gestionnaires, plutôt qu'un « + » isolé dans un
+  // titre : on voit ce qui manque à l'endroit où ça devrait être.
+  const applyRows = [
+    {
+      key: 'penalty',
+      node: penalties[0] ? (
+        <ApplyRuleCard
+          embedded
+          rule={penalties[0]}
+          isStaff={isStaff}
+          onEdit={() => setEditing(penalties[0]!)}
+        />
+      ) : isStaff ? (
+        <AddApplyRow kind="PENALTY" onClick={() => setEditing({ create: 'PENALTY' })} />
+      ) : null,
+    },
+    {
+      key: 'dues',
+      node: dues[0] ? (
+        <ApplyRuleCard
+          embedded
+          rule={dues[0]}
+          isStaff={isStaff}
+          onEdit={() => setEditing(dues[0]!)}
+        />
+      ) : isStaff ? (
+        <AddApplyRow kind="DUES" onClick={() => setEditing({ create: 'DUES' })} />
+      ) : null,
+    },
+  ].filter((row): row is { key: string; node: React.ReactElement } => Boolean(row && row.node))
+
   return (
     <>
-      {/* ------------------------------------------- Retard de paiement */}
-      {showPenalties && (
+      {/* ------------------------------------- Pénalité et cotisation */}
+      {/* Un seul bloc, et d'une autre facture que les règles : ces deux-là ne
+          se donnent pas à un fautif, elles s'APPLIQUENT à un groupe d'un geste.
+          Les règles sont des cartes pleines, celles-ci des cadres à simple
+          contour — la différence se voit avant même de lire les titres. */}
+      {applyRows.length > 0 && (
         <>
-          <SectionHeader
-            title="Retard de paiement"
-            // Une seule pénalité, une seule cotisation : le bouton disparaît dès
-            // qu'elle existe, plutôt que de laisser le serveur refuser après coup.
-            onAdd={isStaff && penalties.length === 0 ? () => setEditing({ create: 'PENALTY' }) : undefined}
-            addLabel="Ajouter une pénalité de retard"
-            first
-          />
-
+          <SectionHeader title="Pénalité et cotisation" first />
+          {/* Un cadre par règle : pénalité et cotisation n'ont rien en commun que
+              leur façon de s'appliquer, elles ne partagent donc que le titre. */}
           <Stack spacing={1}>
-            {penalties.map((r) => (
-              <ApplyRuleCard key={r.id} rule={r} isStaff={isStaff} onEdit={() => setEditing(r)} />
-            ))}
-          </Stack>
-        </>
-      )}
-
-      {/* ------------------------------------------------- Cotisation */}
-      {showDues && (
-        <>
-          <SectionHeader
-            title="Cotisation"
-            onAdd={isStaff && dues.length === 0 ? () => setEditing({ create: 'DUES' }) : undefined}
-            addLabel="Ajouter une cotisation"
-            first={!showPenalties}
-          />
-
-          {dues.length === 0 && <EmptyState>Aucune cotisation</EmptyState>}
-
-          <Stack spacing={1}>
-            {dues.map((r) => (
-              <ApplyRuleCard key={r.id} rule={r} isStaff={isStaff} onEdit={() => setEditing(r)} />
+            {applyRows.map((row) => (
+              <Box
+                key={row.key}
+                sx={{
+                  border: '1px solid rgba(148,163,184,0.22)',
+                  borderRadius: 2,
+                  overflow: 'hidden',
+                }}
+              >
+                {row.node}
+              </Box>
             ))}
           </Stack>
         </>
@@ -127,7 +144,7 @@ export const RulesPage = () => {
         title="Règles"
         onAdd={isStaff ? () => setEditing({ create: 'FINE' }) : undefined}
         addLabel="Ajouter une règle"
-        first={!showPenalties && !showDues}
+        first={applyRows.length === 0}
       />
 
       {fines.length === 0 && <EmptyState>Aucune règle</EmptyState>}
@@ -255,10 +272,13 @@ const ApplyRuleCard = ({
   rule,
   isStaff,
   onEdit,
+  embedded = false,
 }: {
   rule: Rule
   isStaff: boolean
   onEdit: () => void
+  /** Posée dans le bloc de la page : pas de fond ni de coins propres, c'est le cadre qui les porte. */
+  embedded?: boolean
 }) => {
   const applyRule = useApplyRule()
   const dashboard = useDashboard()
@@ -285,15 +305,17 @@ const ApplyRuleCard = ({
     : members.length
 
   const [confirming, setConfirming] = useState(false)
+  const Wrapper = embedded ? Box : Card
 
   return (
-    <Card sx={{ p: 0, overflow: 'hidden', opacity: archived ? 0.45 : 1 }}>
+    <Wrapper sx={{ p: 0, overflow: 'hidden', opacity: archived ? 0.45 : 1 }}>
       {/* Repliée, la carte ne montre que l'essentiel. Description, date de
           dernière application et bouton d'application vivent dans le panneau. */}
       <Box
         onClick={() => setOpen((v) => !v)}
-        sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 2, cursor: 'pointer' }}
+        sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 2, cursor: 'pointer' }}
       >
+        <KindIcon kind={rule.kind} />
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" spacing={1} alignItems="center">
             <Typography
@@ -404,9 +426,52 @@ const ApplyRuleCard = ({
         onClose={() => setConfirming(false)}
         onConfirm={() => applyRule.mutate(rule.id, { onSuccess: () => setConfirming(false) })}
       />
-    </Card>
+    </Wrapper>
   )
 }
+
+/**
+ * L'emblème d'une pénalité ou d'une cotisation, en tête de sa ligne.
+ *
+ * Il distingue les deux d'un coup d'oeil, et les distingue surtout des règles,
+ * qui n'en ont pas. Rouge pour la pénalité, jaune pour la cotisation : les
+ * couleurs de « en retard » et de « à payer », puisque c'est ce qu'elles créent.
+ */
+const KindIcon = ({ kind }: { kind: RuleKind }) => {
+  const isPenalty = kind === 'PENALTY'
+  const color = isPenalty ? palette.danger : palette.accentSoft
+  return (
+    <Box
+      sx={{
+        width: 36,
+        height: 36,
+        flexShrink: 0,
+        borderRadius: '50%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color,
+        bgcolor: isPenalty ? 'rgba(239,68,68,0.14)' : 'rgba(250,204,21,0.14)',
+      }}
+    >
+      {isPenalty ? <ReportProblemIcon fontSize="small" /> : <GroupsIcon fontSize="small" />}
+    </Box>
+  )
+}
+
+/** La place d'une pénalité ou d'une cotisation pas encore créée. Gestionnaires seulement. */
+const AddApplyRow = ({ kind, onClick }: { kind: RuleKind; onClick: () => void }) => (
+  <ButtonBase
+    onClick={onClick}
+    sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1.5, p: 2, textAlign: 'left' }}
+  >
+    <KindIcon kind={kind} />
+    <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+      {kind === 'PENALTY' ? 'Ajouter une pénalité de retard' : 'Ajouter une cotisation'}
+    </Typography>
+    <AddIcon sx={{ color: palette.accent }} />
+  </ButtonBase>
+)
 
 /**
  * Confirmation d'une application en masse.

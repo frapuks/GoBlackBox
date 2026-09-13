@@ -30,8 +30,6 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
   type SettingsRow = {
     late_after_days: number
     allow_player_reports: boolean
-    enable_penalties: boolean
-    enable_dues: boolean
     first_badge_icon: BadgeImage | null
     last_badge_icon: BadgeImage | null
     first_fine_badge_icon: BadgeImage | null
@@ -45,7 +43,7 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
   }
 
   const COLUMNS =
-    'late_after_days, allow_player_reports, enable_penalties, enable_dues, invite_code, ' +
+    'late_after_days, allow_player_reports, invite_code, ' +
     'first_badge_icon, last_badge_icon, first_fine_badge_icon, ' +
     'end_date, usage_start_date, usage_end_date'
 
@@ -63,8 +61,6 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     const base: Settings = {
       lateAfterDays: row!.late_after_days,
       allowPlayerReports: row!.allow_player_reports,
-      enablePenalties: row!.enable_penalties,
-      enableDues: row!.enable_dues,
       firstBadgeIcon: row!.first_badge_icon,
       lastBadgeIcon: row!.last_badge_icon,
       firstFineBadgeIcon: row!.first_fine_badge_icon,
@@ -84,8 +80,6 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
   const toSettings = (row: SettingsRow): Settings => ({
     lateAfterDays: row.late_after_days,
     allowPlayerReports: row.allow_player_reports,
-    enablePenalties: row.enable_penalties,
-    enableDues: row.enable_dues,
     firstBadgeIcon: row.first_badge_icon,
     lastBadgeIcon: row.last_badge_icon,
     firstFineBadgeIcon: row.first_fine_badge_icon,
@@ -155,24 +149,15 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     return toSettings(row!)
   })
 
-  /**
-   * Fonctionnalités de la caisse. Couper les pénalités éteint aussi toute la
-   * notion de retard — badges compris — puisque le calcul dépend du réglage.
-   */
+  /** Fonctionnalités de la caisse que l'admin allume ou coupe. */
   app.patch('/settings/features', adminOnly, async (req): Promise<Settings> => {
     const body = updateFeaturesInput.parse(req.body)
 
     const row = await queryOne<SettingsRow>(
       `UPDATE settings
-          SET allow_player_reports = COALESCE($1, allow_player_reports),
-              enable_penalties     = COALESCE($2, enable_penalties),
-              enable_dues          = COALESCE($3, enable_dues)
+          SET allow_player_reports = COALESCE($1, allow_player_reports)
         WHERE id = 1 ${RETURNING}`,
-      [
-        body.allowPlayerReports ?? null,
-        body.enablePenalties ?? null,
-        body.enableDues ?? null,
-      ],
+      [body.allowPlayerReports ?? null],
     )
 
     return toSettings(row!)

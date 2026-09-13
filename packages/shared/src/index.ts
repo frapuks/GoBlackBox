@@ -529,8 +529,6 @@ export const updateBadgesInput = z.object({
 
 export const updateFeaturesInput = z.object({
   allowPlayerReports: z.boolean().optional(),
-  enablePenalties: z.boolean().optional(),
-  enableDues: z.boolean().optional(),
 })
 
 export type Settings = {
@@ -548,9 +546,6 @@ export type Settings = {
   usageEndDate: string | null
   /** Les joueurs peuvent-ils signaler une amende, à valider par un gestionnaire ? */
   allowPlayerReports: boolean
-  /** Sections de l'écran Règles que l'équipe utilise réellement. */
-  enablePenalties: boolean
-  enableDues: boolean
   /** Icônes des badges décernés par le système. null = pas de badge. */
   firstBadgeIcon: BadgeImage | null
   lastBadgeIcon: BadgeImage | null

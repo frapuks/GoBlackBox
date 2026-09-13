@@ -500,7 +500,7 @@ const FeaturesSection = ({ canEdit }: { canEdit: boolean }) => {
   const toggle = (
     label: string,
     value: boolean | undefined,
-    field: 'allowPlayerReports' | 'enablePenalties' | 'enableDues',
+    field: 'allowPlayerReports',
     fallback: boolean,
   ) => (
     <FormControlLabel
@@ -520,8 +520,6 @@ const FeaturesSection = ({ canEdit }: { canEdit: boolean }) => {
   return (
     <Section title="Fonctionnalités">
       <Stack spacing={0}>
-        {toggle('Pénalités de retard', settings.data?.enablePenalties, 'enablePenalties', true)}
-        {toggle('Cotisations', settings.data?.enableDues, 'enableDues', true)}
         {toggle(
           'Signalements par les joueurs',
           settings.data?.allowPlayerReports,

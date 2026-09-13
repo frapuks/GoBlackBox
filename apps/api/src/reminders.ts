@@ -53,16 +53,15 @@ const runDuesReminder = async (now: Date) => {
     label: string
     reminder_sent_at: Date | null
     last_applied_at: Date | null
-    enable_dues: boolean
   }>(
-    `SELECT r.id, r.label, r.reminder_sent_at, s.enable_dues,
+    `SELECT r.id, r.label, r.reminder_sent_at,
             (SELECT MAX(f.created_at) FROM fines f WHERE f.rule_id = r.id) AS last_applied_at
        FROM rules r
        CROSS JOIN settings s
       WHERE r.kind = 'DUES' AND r.archived_at IS NULL
       LIMIT 1`,
   )
-  if (!rule?.enable_dues) return
+  if (!rule) return
   if (rule.reminder_sent_at && rule.reminder_sent_at >= monthStart) return
 
   const late = isDuesLate(
@@ -119,10 +118,9 @@ const runPenaltyReminder = async (now: Date) => {
     reminder_sent_at: Date | null
     last_applied_at: Date | null
     late_after_days: number
-    enable_penalties: boolean
     has_targets: boolean
   }>(
-    `SELECT r.id, r.label, r.reminder_sent_at, s.late_after_days, s.enable_penalties,
+    `SELECT r.id, r.label, r.reminder_sent_at, s.late_after_days,
             (SELECT MAX(f.created_at) FROM fines f WHERE f.rule_id = r.id) AS last_applied_at,
             EXISTS (
               SELECT 1 FROM fines f
@@ -134,7 +132,7 @@ const runPenaltyReminder = async (now: Date) => {
       WHERE r.kind = 'PENALTY' AND r.archived_at IS NULL
       LIMIT 1`,
   )
-  if (!rule?.enable_penalties || now.getHours() < REMINDER_HOUR) return
+  if (!rule || now.getHours() < REMINDER_HOUR) return
 
   const late = isPenaltyLate(
     {

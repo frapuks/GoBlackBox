@@ -8,7 +8,7 @@ import SportsHandballIcon from '@mui/icons-material/SportsHandball'
 import FitnessCenterIcon from '@mui/icons-material/FitnessCenter'
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
 import { RULE_CONTEXTS, RULE_CONTEXT_LABEL, type RuleContext } from '@blackbox/shared'
-import { useAddFine, useFineEntry, useMembers, useRules, useSettings } from '../api/hooks'
+import { useAddFine, useFineEntry, useMembers, useRules } from '../api/hooks'
 import { Amount, Card, ProfileAvatar, MemberName } from '../components/ui'
 import { FAB_OVERFLOW } from '../components/AppLayout'
 import { RuleCard } from '../components/RuleCard'
@@ -33,7 +33,6 @@ export const AddFinePage = () => {
   const rules = useRules()
   const addFine = useAddFine()
   const entry = useFineEntry()
-  const settings = useSettings()
 
   const [selected, setSelected] = useState<number[]>([])
   const [context, setContext] = useState<RuleContext | null>(null)
@@ -51,17 +50,7 @@ export const AddFinePage = () => {
 
   // Seules les règles du contexte choisi sont proposées : c'est tout l'intérêt
   // de l'étape 2, la liste est divisée d'autant.
-  // Une cotisation ou une pénalité dont la fonctionnalité est coupée ne doit
-  // plus être proposée à la saisie, même si la règle existe encore en base.
-  const kindEnabled = (kind: string) =>
-    kind === 'PENALTY'
-      ? settings.data?.enablePenalties !== false
-      : kind === 'DUES'
-        ? settings.data?.enableDues !== false
-        : true
-
-  const contextRules =
-    rules.data?.filter((r) => r.context === context && kindEnabled(r.kind)) ?? []
+  const contextRules = rules.data?.filter((r) => r.context === context) ?? []
 
   const toggle = (id: number) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
@@ -222,7 +211,7 @@ export const AddFinePage = () => {
               // Même filtre qu'à l'étape suivante : le décompte ne doit pas
               // promettre des règles qui ne seront pas proposées.
               const count =
-                rules.data?.filter((r) => r.context === c && kindEnabled(r.kind)).length ?? 0
+                rules.data?.filter((r) => r.context === c).length ?? 0
               return (
                 <Card
                   key={c}
