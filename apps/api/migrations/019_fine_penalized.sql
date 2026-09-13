@@ -1,0 +1,14 @@
+-- Date de la dernière majoration d'une amende.
+--
+-- Une amende en retard reçoit une pénalité à chaque clic sur le bouton, puis
+-- passe « majorée » pendant le délai de retard. Elle ne peut pas être majorée
+-- une seconde fois dans cette fenêtre : cliquer lundi puis mardi ne donne donc
+-- rien de plus le mardi. Au bout du délai, elle redevient « en retard » et le
+-- clic suivant la majore à nouveau.
+--
+-- Une seule date suffit, le statut se DÉDUIT à la lecture comme le retard
+-- lui-même : aucune tâche quotidienne n'a à faire basculer quoi que ce soit.
+--
+-- Une pénalité est une amende comme une autre : elle porte la même colonne,
+-- suit le même cycle et peut être majorée à son tour.
+ALTER TABLE fines ADD COLUMN penalized_at TIMESTAMPTZ;

@@ -277,8 +277,15 @@ const ApplyRuleCard = ({
   // participant hors amendes n'est jamais la cible d'une application, même s'il
   // a un historique.
   const members = (dashboard.data?.members ?? []).filter((m) => m.receivesFines)
-  const targets = isPenalty ? members.filter((m) => m.hasLate) : members
-  const count = targets.length
+
+  // Une cotisation compte des membres. Une pénalité compte des AMENDES : elle
+  // en crée une par amende en retard non majorée, pas une par joueur. Le
+  // décompte vient du serveur, calculé avec le même fragment SQL que
+  // l'application elle-même.
+  const penalized = members.filter((m) => m.penalizableCount > 0)
+  const count = isPenalty
+    ? penalized.reduce((sum, m) => sum + m.penalizableCount, 0)
+    : members.length
 
   const [confirming, setConfirming] = useState(false)
 
@@ -376,10 +383,10 @@ const ApplyRuleCard = ({
             >
               {count === 0
                 ? isPenalty
-                  ? 'Aucun retardataire'
+                  ? 'Aucune amende à majorer'
                   : 'Aucun membre'
                 : isPenalty
-                  ? `Appliquer aux ${count} retardataires`
+                  ? `Majorer ${count} amende${count > 1 ? 's' : ''}`
                   : `Appliquer aux ${count} membres`}
             </Button>
           )}
@@ -389,6 +396,7 @@ const ApplyRuleCard = ({
       <ApplyDialog
         rule={rule}
         count={count}
+        playerCount={isPenalty ? penalized.length : members.length}
         open={confirming}
         pending={applyRule.isPending}
         onClose={() => setConfirming(false)}
@@ -408,19 +416,24 @@ const ApplyRuleCard = ({
 const ApplyDialog = ({
   rule,
   count,
+  playerCount,
   open,
   pending,
   onClose,
   onConfirm,
 }: {
   rule: Rule
+  /** Amendes créées : une par membre pour une cotisation, une par amende majorée sinon. */
   count: number
+  /** Joueurs touchés. Égal à `count` pour une cotisation, souvent moins pour une pénalité. */
+  playerCount: number
   open: boolean
   pending: boolean
   onClose: () => void
   onConfirm: () => void
 }) => {
   const isPenalty = rule.kind === 'PENALTY'
+  const lateAfterDays = useSettings().data?.lateAfterDays
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
@@ -439,7 +452,9 @@ const ApplyDialog = ({
               de décider, et elle n'apparaît nulle part ailleurs. */}
           <Card sx={{ bgcolor: 'rgba(148,163,184,0.08)', textAlign: 'center', py: 2 }}>
             <Typography variant="overline" color="text.secondary">
-              {count} joueur{count > 1 ? 's' : ''} × {rule.amount} €
+              {isPenalty
+                ? `${count} amende${count > 1 ? 's' : ''} × ${rule.amount} €`
+                : `${count} membre${count > 1 ? 's' : ''} × ${rule.amount} €`}
             </Typography>
             <Typography
               sx={{
@@ -453,13 +468,33 @@ const ApplyDialog = ({
             </Typography>
           </Card>
 
-          <Typography variant="body2" color="text.secondary">
-            {isPenalty
-              ? 'Une amende sera ajoutée à chaque joueur ayant au moins une amende impayée au-delà du délai.'
-              : "Une amende sera ajoutée à chaque membre de l'équipe, sans exception."}
-          </Typography>
+          {/* Ce qui va se passer, dans l'ordre où ça se passe. Pour une pénalité
+              le mécanisme n'est pas évident — une par amende, pas par joueur, et
+              une protection temporaire —, d'où le détail. */}
+          {isPenalty ? (
+            <Stack component="ul" spacing={0.75} sx={{ m: 0, pl: 2.5 }}>
+              <Typography component="li" variant="body2" color="text.secondary">
+                Une pénalité de {rule.amount} € pour chacune des {count} amende
+                {count > 1 ? 's' : ''} en retard, réparties sur {playerCount} joueur
+                {playerCount > 1 ? 's' : ''}.
+              </Typography>
+              <Typography component="li" variant="body2" color="text.secondary">
+                Ces amendes passent{' '}
+                <Box component="span" sx={{ color: palette.accent, fontWeight: 600 }}>
+                  majorées
+                </Box>{' '}
+                pendant {lateAfterDays ?? '…'} jours.
+              </Typography>
+            </Stack>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Une amende sera ajoutée à chaque membre de l&apos;équipe, sans exception.
+            </Typography>
+          )}
 
-          {rule.lastAppliedAt && (
+          {/* L'avertissement de double application ne vaut plus que pour la
+              cotisation : la pénalité se protège d'elle-même, amende par amende. */}
+          {!isPenalty && rule.lastAppliedAt && (
             <Stack
               direction="row"
               spacing={1}

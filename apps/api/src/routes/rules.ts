@@ -11,7 +11,7 @@ import {
   type RuleTier,
 } from '@blackbox/shared'
 import { query, queryOne, transaction } from '../db.js'
-import { IS_LATE_SQL } from '../queries.js'
+import { IS_PENALIZABLE_SQL } from '../queries.js'
 import { notifyNewFines } from '../push.js'
 
 type RuleRow = {
@@ -296,26 +296,49 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       }
       await assertKindEnabled(rule.kind)
 
-      // Un membre exempté n'est la cible d'aucune application : la condition
-      // vaut pour les cotisations comme pour les pénalités, seul le critère de
-      // retard s'y ajoute.
-      //
-      // Le sous-SELECT est évalué sur l'état d'AVANT l'insertion : les amendes
-      // créées par cette requête ne rendent donc personne éligible en cascade.
-      const conditions = ['m.receives_fines']
-      if (rule.kind === 'PENALTY') {
-        conditions.push(`EXISTS (
-          SELECT 1 FROM fines f CROSS JOIN settings s
-           WHERE f.member_id = m.id AND ${IS_LATE_SQL}
-        )`)
+      // Une cotisation tombe sur chaque membre concerné par les amendes, une
+      // fois. RETURNING sert à notifier, exactement comme une saisie.
+      if (rule.kind === 'DUES') {
+        const { rows } = await client.query<{ id: number }>(
+          `INSERT INTO fines (member_id, rule_id, amount, label, created_by)
+           SELECT m.id, $1, $2, $3, $4 FROM members m WHERE m.receives_fines
+           RETURNING id`,
+          [id, rule.amount, rule.label, authorMemberId],
+        )
+        return rows.map((r) => r.id)
       }
-      const targetFilter = `WHERE ${conditions.join(' AND ')}`
 
-      // RETURNING : on récupère les identifiants pour notifier les joueurs
-      // concernés, exactement comme lors d'une saisie individuelle.
+      // Une pénalité, elle, tombe sur chaque AMENDE en retard et pas encore
+      // majorée — une par amende, pas une par joueur.
+      //
+      // Trois temps dans une seule requête :
+      //  1. les amendes visées, verrouillées : deux gestionnaires qui cliquent
+      //     en même temps ne majorent pas deux fois la même ;
+      //  2. leur date de majoration, posée à maintenant : elles deviennent
+      //     « majorées » et le clic suivant les ignorera pendant le délai ;
+      //  3. une pénalité par amende marquée.
+      //
+      // Toutes les parties d'une requête voient l'état d'AVANT : les pénalités
+      // créées ici ne sont donc pas elles-mêmes majorées dans le même clic. Elles
+      // le seront au suivant, une fois leur propre délai écoulé.
+      //
+      // Un membre exempté n'est jamais visé, même s'il traîne un historique.
       const { rows } = await client.query<{ id: number }>(
-        `INSERT INTO fines (member_id, rule_id, amount, label, created_by)
-         SELECT m.id, $1, $2, $3, $4 FROM members m ${targetFilter}
+        `WITH targets AS (
+           SELECT f.id, f.member_id
+             FROM fines f
+             JOIN members m ON m.id = f.member_id
+             CROSS JOIN settings s
+            WHERE m.receives_fines AND ${IS_PENALIZABLE_SQL}
+            FOR UPDATE OF f
+         ),
+         marked AS (
+           UPDATE fines SET penalized_at = NOW()
+            WHERE id IN (SELECT id FROM targets)
+            RETURNING member_id
+         )
+         INSERT INTO fines (member_id, rule_id, amount, label, created_by)
+         SELECT member_id, $1, $2, $3, $4 FROM marked
          RETURNING id`,
         [id, rule.amount, rule.label, authorMemberId],
       )

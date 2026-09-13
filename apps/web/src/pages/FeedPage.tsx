@@ -160,7 +160,7 @@ export const FeedPage = () => {
                 </Typography>
               </Stack>
 
-              <Amount amount={f.amount} state={fineState(paid, f.isLate)} />
+              <Amount amount={f.amount} state={fineState(paid, f.isLate, f.isPenalized)} />
 
               {/* Hors gestion, l'état se lit. En gestion, il s'agit — et la
                   pastille cède la place. L'état reste dit par la couleur du
@@ -174,7 +174,7 @@ export const FeedPage = () => {
                     sx={{ color: palette.accent, borderColor: palette.accent, height: 22 }}
                   />
                 ) : (
-                  <StatusChip state={fineState(paid, f.isLate)} />
+                  <StatusChip state={fineState(paid, f.isLate, f.isPenalized)} />
                 ))}
 
               {isStaff &&

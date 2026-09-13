@@ -136,6 +136,8 @@ export type MemberSummary = {
    * attente n'a encore rien reçu.
    */
   fineCount: number
+  /** Amendes en retard et pas encore majorées : ce que le bouton majorerait. */
+  penalizableCount: number
   /** Distinctions portées à côté du prénom. Calculées à la lecture. */
   badges: MemberBadge[]
 }
@@ -535,6 +537,11 @@ export type Fine = {
   status: FineStatus
   /** Calculé côté serveur à partir de settings.lateAfterDays. */
   isLate: boolean
+  /**
+   * En retard ET majorée il y a moins que le délai. Toujours impayée, mais
+   * protégée contre une seconde pénalité tant que la fenêtre court.
+   */
+  isPenalized: boolean
 }
 
 // ---------------------------------------------------------------- réglages

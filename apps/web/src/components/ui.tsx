@@ -64,8 +64,10 @@ export const Score = ({ amount }: { amount: number }) => (
 
 
 /** État d'affichage d'une amende, dérivé une seule fois pour toute l'app. */
-export const fineState = (paid: boolean, isLate: boolean): FineState =>
-  paid ? 'paid' : isLate ? 'late' : 'due'
+export const fineState = (paid: boolean, isLate: boolean, isPenalized = false): FineState =>
+  // La majoration passe avant le retard : une amende majorée est TOUJOURS en
+  // retard, et c'est ce qui la distingue qu'on veut montrer.
+  paid ? 'paid' : isPenalized ? 'penalized' : isLate ? 'late' : 'due'
 
 /**
  * Nom d'un participant.
@@ -188,7 +190,15 @@ export const StatusChip = ({ state }: { state: FineState }) => (
   <Chip
     size="small"
     variant="outlined"
-    label={state === 'paid' ? 'Payée' : state === 'late' ? 'En retard' : 'À payer'}
+    label={
+      state === 'paid'
+        ? 'Payée'
+        : state === 'penalized'
+          ? 'Majorée'
+          : state === 'late'
+            ? 'En retard'
+            : 'À payer'
+    }
     sx={{ color: fineColor(state), borderColor: fineColor(state), height: 22 }}
   />
 )

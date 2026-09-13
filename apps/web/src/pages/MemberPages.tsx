@@ -59,9 +59,9 @@ const FineRow = ({ fine }: { fine: Fine }) => {
         </Typography>
       </Stack>
 
-      <Amount amount={fine.amount} state={fineState(paid, fine.isLate)} />
+      <Amount amount={fine.amount} state={fineState(paid, fine.isLate, fine.isPenalized)} />
 
-      <StatusChip state={fineState(paid, fine.isLate)} />
+      <StatusChip state={fineState(paid, fine.isLate, fine.isPenalized)} />
     </Card>
   )
 }

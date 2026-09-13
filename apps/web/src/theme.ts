@@ -28,10 +28,21 @@ export const palette = {
  * en « due » : c'est ce que ça coûtera, et ça garde une seule couleur pour
  * « de l'argent à sortir » dans toute l'app.
  */
-export type FineState = 'due' | 'late' | 'paid'
+export type FineState = 'due' | 'late' | 'penalized' | 'paid'
 
+/**
+ * La majorée est en orange : toujours impayée et hors délai comme le retard,
+ * mais déjà sanctionnée. La distinguer du rouge montre d'un coup d'oeil ce qui
+ * attend encore le bouton des pénalités.
+ */
 export const fineColor = (state: FineState): string =>
-  state === 'paid' ? palette.textMuted : state === 'late' ? palette.danger : palette.accentSoft
+  state === 'paid'
+    ? palette.textMuted
+    : state === 'late'
+      ? palette.danger
+      : state === 'penalized'
+        ? palette.accent
+        : palette.accentSoft
 
 /**
  * Marges hautes et latérales identiques sur tous les écrans, encoche comprise.

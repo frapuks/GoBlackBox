@@ -28,6 +28,35 @@ export const IS_LATE_SQL = `
       <= (NOW() AT TIME ZONE 'Europe/Paris')::date
 `
 
+/**
+ * « Majorée » : en retard, et majorée il y a moins que le délai.
+ *
+ * Même délai que pour le retard, même comparaison de dates calendaires. Une
+ * amende majorée reste en retard au sens du paiement — le joueur n'a toujours
+ * pas payé —, elle est seulement protégée contre une seconde pénalité.
+ */
+export const IS_PENALIZED_SQL = `
+  (${IS_LATE_SQL})
+  AND f.penalized_at IS NOT NULL
+  AND (f.penalized_at AT TIME ZONE 'Europe/Paris')::date + s.late_after_days
+      > (NOW() AT TIME ZONE 'Europe/Paris')::date
+`
+
+/**
+ * Ce que le bouton des pénalités va majorer : en retard, et PAS majorée.
+ *
+ * Partagé entre l'application et le décompte affiché, pour que le bouton ne
+ * promette jamais un nombre différent de ce qui sera créé.
+ */
+export const IS_PENALIZABLE_SQL = `
+  (${IS_LATE_SQL})
+  AND NOT (
+    f.penalized_at IS NOT NULL
+    AND (f.penalized_at AT TIME ZONE 'Europe/Paris')::date + s.late_after_days
+        > (NOW() AT TIME ZONE 'Europe/Paris')::date
+  )
+`
+
 export type MemberSummaryRow = {
   id: number
   display_name: string
@@ -38,6 +67,7 @@ export type MemberSummaryRow = {
   total_paid: number
   has_late: boolean
   fine_count: number
+  penalizable_count: number
 }
 
 /** Colonnes explicites : jamais de SELECT *, sinon les types TS mentent. */
@@ -58,7 +88,11 @@ export const MEMBER_SUMMARY_SQL = `
          -- Compté et non déduit des montants : une règle peut valoir 0 €
          -- (une tournée, un gâteau), et un signalement en attente n'a encore
          -- rien reçu.
-         COUNT(f.id) FILTER (WHERE f.status = 'CONFIRMED')::int                AS fine_count
+         COUNT(f.id) FILTER (WHERE f.status = 'CONFIRMED')::int                AS fine_count,
+         -- Ce que le bouton des pénalités majorerait maintenant. Calculé ici
+         -- avec le même fragment que l'application, pour que le décompte
+         -- affiché ne diverge jamais de ce qui sera réellement créé.
+         COUNT(f.id) FILTER (WHERE ${IS_PENALIZABLE_SQL})::int               AS penalizable_count
     FROM members m
     LEFT JOIN users u   ON u.id = m.user_id
     LEFT JOIN fines f   ON f.member_id = m.id
@@ -86,6 +120,7 @@ export const toMemberSummary = (r: MemberSummaryRow): MemberSummary => ({
   totalPaid: r.total_paid,
   hasLate: r.has_late,
   fineCount: r.fine_count,
+  penalizableCount: r.penalizable_count,
   // Rempli par loadBadges() dans les routes : le calcul a besoin de TOUS les
   // membres, il ne peut donc pas se faire ligne par ligne ici.
   badges: [],
@@ -104,6 +139,7 @@ export type FineRow = {
   created_by: number | null
   status: FineStatus
   is_late: boolean
+  is_penalized: boolean
 }
 
 export const FINE_SQL = `
@@ -118,7 +154,8 @@ export const FINE_SQL = `
          cb.display_name AS created_by_name,
          f.created_by,
          f.status,
-         (${IS_LATE_SQL}) AS is_late
+         (${IS_LATE_SQL}) AS is_late,
+         (${IS_PENALIZED_SQL}) AS is_penalized
     FROM fines f
     JOIN members m       ON m.id = f.member_id
     LEFT JOIN members cb ON cb.id = f.created_by
@@ -138,4 +175,5 @@ export const toFine = (r: FineRow): Fine => ({
   createdById: r.created_by,
   status: r.status,
   isLate: r.is_late,
+  isPenalized: r.is_penalized,
 })
