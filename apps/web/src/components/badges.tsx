@@ -75,8 +75,11 @@ export const BadgeMark = ({
   size = 24,
 }: {
   art: BadgeImage
-  /** Une largeur CSS : un nombre de pixels, ou « 100% » dans une grille. */
-  size?: number | string
+  /**
+   * En pixels, jamais en pourcentage : une hauteur relative se résout
+   * différemment selon les navigateurs, et Safari étirait le disque en ovale.
+   */
+  size?: number
 }) => (
   <Box
     component="img"
@@ -85,10 +88,8 @@ export const BadgeMark = ({
     sx={{
       width: size,
       height: size,
-      // L'image reste carrée même quand sa largeur vient d'une colonne : sans
-      // ça, une hauteur en pourcentage se résout sur un parent sans hauteur
-      // propre et le disque s'aplatit en ovale.
-      aspectRatio: '1',
+      // Les sources font 256 × 256 mais une image refaite pourrait ne pas être
+      // parfaitement carrée : recadrer vaut mieux que déformer.
       objectFit: 'cover',
       borderRadius: '50%',
       display: 'block',
@@ -96,6 +97,14 @@ export const BadgeMark = ({
     }}
   />
 )
+
+/**
+ * Tailles de la grille de choix. La case fait la vignette plus sa bordure de
+ * sélection, deux pixels de chaque côté. Le nombre de colonnes, lui, se déduit
+ * de la place disponible.
+ */
+const CELL = 60
+const THUMB = 56
 
 /**
  * Choix du badge d'une règle ou d'une distinction.
@@ -124,16 +133,33 @@ export const BadgePicker = ({
       </Typography>
     )}
 
-    {/* `minmax(0, …)` et non `1fr` seul : une colonne prend par défaut la
-        largeur MINIMALE de son contenu, soit les 256 px de l'image, et la
-        grille déborde alors de la boîte de dialogue. */}
-    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 1 }}>
+    {/* Des cases de taille FIXE qui passent à la ligne quand la place manque,
+        plutôt qu'un nombre de colonnes imposé. Aucune largeur d'écran ne peut
+        faire déborder la grille, et un écran plus large montre simplement plus
+        de badges par rangée.
+
+        Une grille en `auto-fill` et non un flexbox qui passe à la ligne : le
+        comportement est le même, mais la dernière rangée reste alignée sur les
+        colonnes au lieu de se centrer ou de s'étaler toute seule.
+
+        Largeur et hauteur fixes et égales : une vignette en pourcentage
+        déduisait sa hauteur d'un bouton lui-même dimensionné par un rapport
+        carré, et Safari sur iPhone étirait le disque en ovale. */}
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(auto-fill, ${CELL}px)`,
+        gap: 1,
+        justifyContent: 'center',
+      }}
+    >
       <IconButton
         aria-label="Aucun badge"
         aria-pressed={value === null}
         onClick={() => onChange(null)}
         sx={{
-          aspectRatio: '1',
+          width: CELL,
+          height: CELL,
           border: '1px solid',
           borderColor: value === null ? palette.accent : 'rgba(148,163,184,0.25)',
           color: value === null ? palette.accent : palette.textMuted,
@@ -152,17 +178,15 @@ export const BadgePicker = ({
             aria-pressed={active}
             onClick={() => onChange(image)}
             sx={{
-              aspectRatio: '1',
-              p: 0.5,
+              width: CELL,
+              height: CELL,
+              p: 0,
               border: '2px solid',
               borderColor: active ? palette.accent : 'transparent',
               borderRadius: 1,
             }}
           >
-            {/* En pourcentage et non en pixels : la vignette suit la largeur
-                de la colonne, donc la grille reste carrée sur tous les
-                téléphones. */}
-            <BadgeMark art={image} size="100%" />
+            <BadgeMark art={image} size={THUMB} />
           </IconButton>
         )
       })}
