@@ -10,30 +10,33 @@ import type { Fine, FineStatus, MemberSummary, Role } from '@blackbox/shared'
  * Une amende impayée est « en retard » quand sa date de création + N jours
  * est atteinte, N venant de settings.late_after_days.
  *
- * On compare des DATES calendaires, pas des durées : une amende du lundi
- * bascule à minuit le lundi suivant, pas à l'heure exacte de saisie.
- * Le AT TIME ZONE est indispensable des deux côtés — sans lui une amende
- * saisie à 23 h en été est datée du lendemain en UTC et bascule un jour trop tard.
+ * Le délai se compte en durée RÉELLE, pas en dates calendaires : une amende du
+ * lundi 20 h 35 bascule le lundi suivant à 20 h 35, soit sept jours pleins.
+ * Comparer des dates faisait basculer au premier minuit atteint, donc après
+ * sept jours MOINS l'heure de saisie — six jours et une minute pour une amende
+ * de 23 h 59.
+ *
+ * Deux instants se comparent sans fuseau : aucun AT TIME ZONE ici, là où le
+ * calcul par dates en exigeait un de chaque côté.
  */
 export const IS_LATE_SQL = `
   f.status = 'CONFIRMED'
   AND f.paid_at IS NULL
-  AND (f.created_at AT TIME ZONE 'Europe/Paris')::date + s.late_after_days
-      <= (NOW() AT TIME ZONE 'Europe/Paris')::date
+  AND f.created_at + make_interval(days => s.late_after_days) <= NOW()
 `
 
 /**
  * « Majorée » : en retard, et majorée il y a moins que le délai.
  *
- * Même délai que pour le retard, même comparaison de dates calendaires. Une
- * amende majorée reste en retard au sens du paiement — le joueur n'a toujours
- * pas payé —, elle est seulement protégée contre une seconde pénalité.
+ * Même délai que pour le retard, et compté de la même façon : en durée réelle
+ * depuis la majoration. Une amende majorée reste en retard au sens du paiement
+ * — le joueur n'a toujours pas payé —, elle est seulement protégée contre une
+ * seconde pénalité.
  */
 export const IS_PENALIZED_SQL = `
   (${IS_LATE_SQL})
   AND f.penalized_at IS NOT NULL
-  AND (f.penalized_at AT TIME ZONE 'Europe/Paris')::date + s.late_after_days
-      > (NOW() AT TIME ZONE 'Europe/Paris')::date
+  AND f.penalized_at + make_interval(days => s.late_after_days) > NOW()
 `
 
 /**
@@ -46,8 +49,7 @@ export const IS_PENALIZABLE_SQL = `
   (${IS_LATE_SQL})
   AND NOT (
     f.penalized_at IS NOT NULL
-    AND (f.penalized_at AT TIME ZONE 'Europe/Paris')::date + s.late_after_days
-        > (NOW() AT TIME ZONE 'Europe/Paris')::date
+    AND f.penalized_at + make_interval(days => s.late_after_days) > NOW()
   )
 `
 

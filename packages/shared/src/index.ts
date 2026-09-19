@@ -373,9 +373,9 @@ export const isDuesLate = (
  *
  * Deux conditions :
  *  1. le délai de retard est écoulé depuis la dernière application — ou elle
- *     n'a jamais été appliquée. Même comparaison de dates calendaires que pour
- *     les amendes : appliquée un lundi avec un délai de 7 jours, elle redevient
- *     à appliquer le lundi suivant ;
+ *     n'a jamais été appliquée. Même durée réelle que pour les amendes :
+ *     appliquée un lundi à 20 h 35 avec un délai de 7 jours, elle redevient à
+ *     appliquer le lundi suivant à 20 h 35 ;
  *  2. il y a au moins une amende à majorer. Sans elle, la règle afficherait
  *     « en retard » à côté d'un bouton désactivé, et le rappel réclamerait un
  *     geste impossible.
@@ -388,11 +388,11 @@ export const isPenaltyLate = (
 ) => {
   if (rule.kind !== 'PENALTY' || lateAfterDays === undefined || !hasFinesToPenalize) return false
   if (!rule.lastAppliedAt) return true
-  const due = new Date(rule.lastAppliedAt)
-  due.setHours(0, 0, 0, 0)
-  due.setDate(due.getDate() + lateAfterDays)
-  return due <= now
+  return new Date(rule.lastAppliedAt).getTime() + lateAfterDays * DAY_MS <= now.getTime()
 }
+
+/** Un jour en millisecondes. Le délai de retard se compte en durée réelle. */
+const DAY_MS = 86_400_000
 /**
  * Un palier d'une règle : « 0 à 5 min », « récidive »… Libellé libre, donc le
  * mécanisme ne se limite pas aux durées.

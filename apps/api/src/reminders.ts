@@ -145,13 +145,12 @@ const runPenaltyReminder = async (now: Date) => {
   )
   if (!late) return
 
-  // Le moment où le statut est apparu. Jamais appliquée : dès l'origine, donc
-  // un seul rappel tant que personne ne clique.
-  const lateSince = rule.last_applied_at ? new Date(rule.last_applied_at) : null
-  if (lateSince) {
-    lateSince.setHours(0, 0, 0, 0)
-    lateSince.setDate(lateSince.getDate() + rule.late_after_days)
-  }
+  // Le moment où le statut est apparu, à l'heure près comme le délai lui-même.
+  // Jamais appliquée : dès l'origine, donc un seul rappel tant que personne ne
+  // clique.
+  const lateSince = rule.last_applied_at
+    ? new Date(rule.last_applied_at.getTime() + rule.late_after_days * 86_400_000)
+    : null
   const alreadySent =
     rule.reminder_sent_at !== null && (lateSince === null || rule.reminder_sent_at >= lateSince)
   if (alreadySent) return
