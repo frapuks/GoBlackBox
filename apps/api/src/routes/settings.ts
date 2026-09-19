@@ -33,6 +33,8 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     first_badge_icon: BadgeImage | null
     last_badge_icon: BadgeImage | null
     first_fine_badge_icon: BadgeImage | null
+    bank_name: string | null
+    bank_iban: string | null
     invite_code: string
     // `DATE` en base : le driver pg en fait un objet Date à minuit local. On
     // ne le convertit jamais en ISO complet, ce qui décalerait d'un jour selon
@@ -43,7 +45,7 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
   }
 
   const COLUMNS =
-    'late_after_days, allow_player_reports, invite_code, ' +
+    'late_after_days, allow_player_reports, invite_code, bank_name, bank_iban, ' +
     'first_badge_icon, last_badge_icon, first_fine_badge_icon, ' +
     'end_date, usage_start_date, usage_end_date'
 
@@ -61,6 +63,8 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     const base: Settings = {
       lateAfterDays: row!.late_after_days,
       allowPlayerReports: row!.allow_player_reports,
+      bankName: row!.bank_name,
+      bankIban: row!.bank_iban,
       firstBadgeIcon: row!.first_badge_icon,
       lastBadgeIcon: row!.last_badge_icon,
       firstFineBadgeIcon: row!.first_fine_badge_icon,
@@ -80,6 +84,8 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
   const toSettings = (row: SettingsRow): Settings => ({
     lateAfterDays: row.late_after_days,
     allowPlayerReports: row.allow_player_reports,
+    bankName: row.bank_name,
+    bankIban: row.bank_iban,
     firstBadgeIcon: row.first_badge_icon,
     lastBadgeIcon: row.last_badge_icon,
     firstFineBadgeIcon: row.first_fine_badge_icon,
@@ -129,7 +135,11 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
           SET late_after_days  = COALESCE($1, late_after_days),
               end_date         = CASE WHEN $2::boolean THEN $3::date ELSE end_date END,
               usage_start_date = CASE WHEN $4::boolean THEN $5::date ELSE usage_start_date END,
-              usage_end_date   = CASE WHEN $6::boolean THEN $7::date ELSE usage_end_date END
+              usage_end_date   = CASE WHEN $6::boolean THEN $7::date ELSE usage_end_date END,
+              -- Même booléen de présence : une chaîne vidée arrive en NULL et
+              -- doit effacer, sans que « ne pas y toucher » efface aussi.
+              bank_name        = CASE WHEN $8::boolean THEN NULLIF($9, '') ELSE bank_name END,
+              bank_iban        = CASE WHEN $10::boolean THEN NULLIF($11, '') ELSE bank_iban END
         WHERE id = 1 ${RETURNING}`,
       [
         body.lateAfterDays ?? null,
@@ -141,6 +151,10 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
         body.usageStartDate ?? null,
         body.usageEndDate !== undefined,
         body.usageEndDate ?? null,
+        body.bankName !== undefined,
+        body.bankName ?? null,
+        body.bankIban !== undefined,
+        body.bankIban ?? null,
       ],
     )
 

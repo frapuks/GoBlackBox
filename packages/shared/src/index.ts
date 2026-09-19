@@ -517,6 +517,12 @@ export const updateSettingsInput = z.object({
   endDate: dateSchema.nullable().optional(),
   usageStartDate: dateSchema.nullable().optional(),
   usageEndDate: dateSchema.nullable().optional(),
+  // Vidé, un champ arrive en chaîne vide : on le range en `null` plutôt que
+  // de garder une chaîne vide en base, qui s'afficherait comme une valeur.
+  bankName: z.string().trim().max(120).nullable().optional(),
+  // Aucun contrôle de format : un IBAN se recopie avec ou sans espaces selon
+  // le relevé, et le refuser empêcherait d'enregistrer ce que la banque écrit.
+  bankIban: z.string().trim().max(60).nullable().optional(),
 })
 
 /** Ce que l'équipe utilise. Activer ou couper engage tout le monde : admin. */
@@ -551,6 +557,9 @@ export type Settings = {
   lastBadgeIcon: BadgeImage | null
   /** Porté par celui qui a reçu la toute première amende, cotisations exclues. */
   firstFineBadgeIcon: BadgeImage | null
+  /** Où l'équipe verse. Lisible par tous, modifiable par les gestionnaires. */
+  bankName: string | null
+  bankIban: string | null
   /** Présent uniquement pour l'ADMIN : ne doit jamais fuiter vers un joueur. */
   inviteCode?: string
 }

@@ -257,6 +257,8 @@ export const useUpdateSettings = () =>
       endDate?: string | null
       usageStartDate?: string | null
       usageEndDate?: string | null
+      bankName?: string | null
+      bankIban?: string | null
     }) => patch<Settings>('/settings', v),
   )
 

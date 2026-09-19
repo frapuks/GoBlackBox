@@ -90,6 +90,7 @@ export const SettingsPage = () => {
       </Stack>
 
       <ProfileSection />
+      <BankSection canEdit={isStaff} />
       <NotificationsSection />
 
       {isStaff && (
@@ -155,6 +156,103 @@ const ProfileSection = () => {
 
       <PasswordDialog open={changingPassword} onClose={() => setChangingPassword(false)} />
     </Section>
+  )
+}
+
+/**
+ * Le compte où verser ce qu'on doit.
+ *
+ * Réglage ordinaire et non d'administration : tout le monde le LIT — c'est
+ * l'intérêt même d'un IBAN dans l'app —, seuls les gestionnaires le modifient.
+ * Il vit donc avec le profil, avant le bloc réservé au staff.
+ */
+const BankSection = ({ canEdit }: { canEdit: boolean }) => {
+  const settings = useSettings()
+  const updateSettings = useUpdateSettings()
+
+  const [name, setName] = useState('')
+  const [iban, setIban] = useState('')
+
+  // Les champs suivent le serveur : sans ça, une valeur enregistrée depuis un
+  // autre appareil ne remonterait jamais ici.
+  useEffect(() => {
+    if (!settings.data) return
+    setName(settings.data.bankName ?? '')
+    setIban(settings.data.bankIban ?? '')
+  }, [settings.data?.bankName, settings.data?.bankIban])
+
+  if (!settings.data) return null
+
+  const dirty = name !== (settings.data.bankName ?? '') || iban !== (settings.data.bankIban ?? '')
+
+  return (
+    <Section title="Compte bancaire">
+      <BankField label="Nom" value={name} onChange={setName} canEdit={canEdit} />
+      <BankField label="IBAN" value={iban} onChange={setIban} canEdit={canEdit} />
+
+      {canEdit && (
+        <Button
+          variant="contained"
+          disabled={!dirty || updateSettings.isPending}
+          onClick={() => updateSettings.mutate({ bankName: name, bankIban: iban })}
+        >
+          Enregistrer
+        </Button>
+      )}
+
+      {updateSettings.error && <Alert severity="error">{updateSettings.error.message}</Alert>}
+    </Section>
+  )
+}
+
+/**
+ * Un champ bancaire et son bouton de copie.
+ *
+ * Le bouton existe pour TOUT le monde, y compris sur un champ en lecture
+ * seule : c'est même le seul geste qui intéresse un joueur, venu chercher
+ * l'IBAN pour faire son virement. Il disparaît sur un champ vide.
+ *
+ * Aucun contrôle de format : un IBAN se recopie avec ou sans espaces selon le
+ * relevé, et le refuser empêcherait d'enregistrer ce que la banque écrit.
+ */
+const BankField = ({
+  label,
+  value,
+  onChange,
+  canEdit,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  canEdit: boolean
+}) => {
+  const [copied, setCopied] = useState(false)
+
+  const copy = async () => {
+    if (!(await copyToClipboard(value))) return
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <Stack direction="row" alignItems="center" spacing={1}>
+      <TextField
+        label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={!canEdit}
+        sx={{ flex: 1 }}
+      />
+      {value !== '' && (
+        <IconButton
+          aria-label={copied ? label + ' copié' : 'Copier : ' + label}
+          onClick={copy}
+          sx={{ color: copied ? palette.accent : undefined }}
+        >
+          {copied ? <CheckIcon /> : <ContentCopyIcon />}
+        </IconButton>
+      )}
+    </Stack>
   )
 }
 
