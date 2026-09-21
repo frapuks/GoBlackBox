@@ -19,8 +19,8 @@ import { notifyUsers, pushEnabled } from './push.js'
  * Greenwich et un rappel de 9 h partirait à 11 h en été.
  */
 
-/** Heure des rappels : le matin, jamais au milieu de la nuit. */
-const REMINDER_HOUR = 9
+/** Heure du rappel de cotisation, le 1er du mois. */
+const DUES_REMINDER_HOUR = 9
 
 /**
  * Un tour de vérification : la cotisation, puis la pénalité.
@@ -45,7 +45,7 @@ export const runReminders = async (now = new Date()) => {
 const runDuesReminder = async (now: Date) => {
   const monthStart = periodStart('MONTH', now)
   const slot = new Date(monthStart)
-  slot.setHours(REMINDER_HOUR, 0, 0, 0)
+  slot.setHours(DUES_REMINDER_HOUR, 0, 0, 0)
   if (now < slot) return
 
   const rule = await queryOne<{
@@ -103,9 +103,9 @@ const managersWanting = (column: 'notify_dues' | 'notify_penalty') =>
   query<{ id: number }>(`SELECT id FROM users WHERE role IN ('ADMIN', 'MANAGER') AND ${column}`)
 
 /**
- * Le rappel de la pénalité de retard, lié à l'apparition de son statut « en
- * retard » : même condition exactement, calculée par la même fonction que
- * l'écran Règles.
+ * Le rappel de la pénalité de retard, envoyé à l'instant où son statut « en
+ * retard » apparaît : même condition exactement, calculée par la même fonction
+ * que l'écran Règles.
  *
  * Un seul rappel par apparition du statut. Il repart à la prochaine, c'est-à-dire
  * après une application suivie d'un nouveau délai écoulé : la date d'envoi est
@@ -132,7 +132,10 @@ const runPenaltyReminder = async (now: Date) => {
       WHERE r.kind = 'PENALTY' AND r.archived_at IS NULL
       LIMIT 1`,
   )
-  if (!rule || now.getHours() < REMINDER_HOUR) return
+  // Aucune heure d'attente, pas même la nuit : le rappel part à l'instant où
+  // le statut apparaît, et chacun règle le silence de son téléphone lui-même.
+  // Le minuteur passant chaque minute, l'écart ne dépasse jamais une minute.
+  if (!rule) return
 
   const late = isPenaltyLate(
     {
