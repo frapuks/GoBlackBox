@@ -64,6 +64,59 @@ export const FeedPage = () => {
 
   const isStaff = me.data?.user.role === 'ADMIN' || me.data?.user.role === 'MANAGER'
 
+  /**
+   * Amendes cochées pendant la séance de gestion, dans leur dernier état connu.
+   *
+   * Le filtre « Impayées » est appliqué par le serveur : sans ça, une amende
+   * cochée disparaîtrait au refetch, et le gestionnaire ne verrait plus ce
+   * qu'il vient de faire. Elle reste donc affichée, estompée, et se décoche
+   * pour revenir en arrière.
+   *
+   * Changer de filtre ou de mode termine la séance : on repart d'une liste
+   * vide, même en revenant ensuite à la même combinaison. Le numéro de séance
+   * sert à écarter les réponses du serveur arrivées après coup.
+   */
+  const keeping = managing && unpaid
+  const [session, setSession] = useState({ id: 0, fines: new Map<number, Fine>() })
+  const kept = keeping ? session.fines : null
+
+  const endSession = () => setSession((prev) => ({ id: prev.id + 1, fines: new Map() }))
+
+  const keep = (sessionId: number, id: number, fine: Fine | null) =>
+    setSession((prev) => {
+      if (prev.id !== sessionId) return prev
+      const fines = new Map(prev.fines)
+      if (fine) fines.set(id, fine)
+      else fines.delete(id)
+      return { id: prev.id, fines }
+    })
+
+  const togglePaid = (f: Fine, paid: boolean) => {
+    if (!keeping) return setPaid.mutate({ id: f.id, paid })
+    const key = session.id
+    // Affichée cochée tout de suite, puis remplacée par la réponse du serveur.
+    // En cas d'échec, elle retrouve l'état d'avant le clic.
+    keep(key, f.id, { ...f, paidAt: paid ? new Date().toISOString() : null })
+    setPaid.mutate(
+      { id: f.id, paid },
+      {
+        onSuccess: (fine) => keep(key, f.id, fine),
+        onError: () => keep(key, f.id, f),
+      },
+    )
+  }
+
+  /** Ce que renvoie le serveur, complété des amendes de la séance au même tri. */
+  const list =
+    fines.data && kept?.size
+      ? [...new Map([...fines.data, ...kept.values()].map((f) => [f.id, f])).values()].sort(
+          (a, b) =>
+            Number(b.status === 'PENDING') - Number(a.status === 'PENDING') ||
+            b.createdAt.localeCompare(a.createdAt) ||
+            b.id - a.id,
+        )
+      : fines.data
+
   // La liste des membres est déjà chargée pour le filtre : les badges qu'elle
   // porte n'en coûtent aucune requête de plus.
   const badges = new Map((members.data ?? []).map((m) => [m.id, m.badges]))
@@ -87,7 +140,10 @@ export const FeedPage = () => {
             size="small"
             icon={<PlaylistAddCheckIcon />}
             label="Gestion"
-            onClick={() => setManaging((v) => !v)}
+            onClick={() => {
+              setManaging((v) => !v)
+              endSession()
+            }}
             color={managing ? 'primary' : 'default'}
             variant={managing ? 'filled' : 'outlined'}
           />
@@ -98,7 +154,10 @@ export const FeedPage = () => {
         <Chip
           icon={<FilterListIcon />}
           label="Impayées"
-          onClick={() => setUnpaid((v) => !v)}
+          onClick={() => {
+            setUnpaid((v) => !v)
+            endSession()
+          }}
           color={unpaid ? 'primary' : 'default'}
           variant={unpaid ? 'filled' : 'outlined'}
         />
@@ -106,7 +165,10 @@ export const FeedPage = () => {
           size="small"
           displayEmpty
           value={memberId}
-          onChange={(e) => setMemberId(e.target.value === '' ? '' : Number(e.target.value))}
+          onChange={(e) => {
+            setMemberId(e.target.value === '' ? '' : Number(e.target.value))
+            endSession()
+          }}
           sx={{ flex: 1 }}
         >
           <MenuItem value="">Tous les joueurs</MenuItem>
@@ -119,10 +181,10 @@ export const FeedPage = () => {
       </Stack>
 
       {fines.isPending && <CircularProgress />}
-      {fines.data?.length === 0 && <EmptyState>Aucune amende</EmptyState>}
+      {list?.length === 0 && <EmptyState>Aucune amende</EmptyState>}
 
       <Stack spacing={1}>
-        {fines.data?.map((f) => {
+        {list?.map((f) => {
           const paid = f.paidAt !== null
           const pending = f.status === 'PENDING'
 
@@ -194,7 +256,7 @@ export const FeedPage = () => {
                 ) : (
                   <Checkbox
                     checked={paid}
-                    onChange={(e) => setPaid.mutate({ id: f.id, paid: e.target.checked })}
+                    onChange={(e) => togglePaid(f, e.target.checked)}
                     inputProps={{ 'aria-label': 'Marquer comme payée' }}
                   />
                 ))}
@@ -225,7 +287,15 @@ export const FeedPage = () => {
         pending={remove.isPending}
         onClose={() => setDeleting(null)}
         onConfirm={() => {
-          if (deleting) remove.mutate(deleting.id, { onSuccess: () => setDeleting(null) })
+          if (!deleting) return
+          const key = session.id
+          remove.mutate(deleting.id, {
+            onSuccess: () => {
+              // Une amende supprimée ne doit pas survivre dans la séance.
+              keep(key, deleting.id, null)
+              setDeleting(null)
+            },
+          })
         }}
       >
         {deleting && (

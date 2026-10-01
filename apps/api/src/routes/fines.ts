@@ -31,9 +31,12 @@ export const fineRoutes: FastifyPluginAsync = async (app) => {
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
     // Les signalements en attente remontent en tête : ils demandent une action,
     // pas une consultation. Le reste du fil garde son ordre chronologique.
+    // `f.id` départage les ex æquo (tout un lot partage le même NOW()) : sans
+    // lui, Postgres les rend dans l'ordre du disque, et cocher une amende
+    // payée — un UPDATE, donc une ligne réécrite ailleurs — mélange le fil.
     const rows = await query<FineRow>(
       `${FINE_SQL} ${where}
-        ORDER BY (f.status = 'PENDING') DESC, f.created_at DESC
+        ORDER BY (f.status = 'PENDING') DESC, f.created_at DESC, f.id DESC
         LIMIT 500`,
       params,
     )

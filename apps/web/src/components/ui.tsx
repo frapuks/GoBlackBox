@@ -1,6 +1,6 @@
 import { Avatar, Box, Chip, Stack, Typography } from '@mui/material'
 import type { SxProps } from '@mui/material'
-import { fromDayKey, type MemberBadge } from '@blackbox/shared'
+import { daysBetween, fromDayKey, todayKey, toDayKey, type MemberBadge } from '@blackbox/shared'
 import { profileBadge } from './badges'
 import { fineColor, palette, type FineState } from '../theme'
 
@@ -271,15 +271,20 @@ export const Row = ({ children, sx }: { children: React.ReactNode; sx?: SxProps 
 export const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
 
-/** « il y a 2 h », « hier », « lun 14 » — comme dans les maquettes. */
+/**
+ * « il y a 2 h », « hier », « lun 14 » — comme dans les maquettes.
+ *
+ * Les jours se comptent en dates civiles, pas en tranches de 24 h : une amende
+ * de lundi 20 h vue mercredi 10 h n'a que 38 h, mais elle est d'avant-hier.
+ */
 export const formatAgo = (iso: string) => {
-  const diffMs = Date.now() - new Date(iso).getTime()
-  const hours = Math.floor(diffMs / 3_600_000)
+  const date = new Date(iso)
+  const hours = Math.floor((Date.now() - date.getTime()) / 3_600_000)
   if (hours < 1) return "à l'instant"
-  if (hours < 24) return `il y a ${hours} h`
-  const days = Math.floor(hours / 24)
+  const days = daysBetween(toDayKey(date), todayKey())
+  if (days < 1) return `il y a ${hours} h`
   if (days === 1) return 'hier'
-  if (days < 7) return new Date(iso).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })
+  if (days < 7) return date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })
   return formatDate(iso)
 }
 
