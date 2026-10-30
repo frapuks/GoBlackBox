@@ -7,8 +7,8 @@ import CloseIcon from '@mui/icons-material/Close'
 import SportsHandballIcon from '@mui/icons-material/SportsHandball'
 import FitnessCenterIcon from '@mui/icons-material/FitnessCenter'
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
-import { RULE_CONTEXTS, RULE_CONTEXT_LABEL, type RuleContext } from '@blackbox/shared'
-import { useAddFine, useFineEntry, useMembers, useRules } from '../api/hooks'
+import { isKindEnabled, RULE_CONTEXTS, RULE_CONTEXT_LABEL, type RuleContext } from '@blackbox/shared'
+import { useAddFine, useFineEntry, useMembers, useRules, useSettings } from '../api/hooks'
 import { Amount, Card, ProfileAvatar, MemberName } from '../components/ui'
 import { FAB_OVERFLOW } from '../components/AppLayout'
 import { RuleCard } from '../components/RuleCard'
@@ -31,6 +31,7 @@ export const AddFinePage = () => {
   const navigate = useNavigate()
   const members = useMembers()
   const rules = useRules()
+  const settings = useSettings()
   const addFine = useAddFine()
   const entry = useFineEntry()
 
@@ -48,9 +49,14 @@ export const AddFinePage = () => {
   const all = (members.data ?? []).filter((m) => m.receivesFines)
   const allSelected = all.length > 0 && selected.length === all.length
 
+  // Une cotisation ou une pénalité coupée par l'admin n'est plus proposée : le
+  // serveur la refuserait de toute façon.
+  const features = settings.data
+  const usable = (rules.data ?? []).filter((r) => features && isKindEnabled(r.kind, features))
+
   // Seules les règles du contexte choisi sont proposées : c'est tout l'intérêt
   // de l'étape 2, la liste est divisée d'autant.
-  const contextRules = rules.data?.filter((r) => r.context === context) ?? []
+  const contextRules = usable.filter((r) => r.context === context)
 
   const toggle = (id: number) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
@@ -211,7 +217,7 @@ export const AddFinePage = () => {
               // Même filtre qu'à l'étape suivante : le décompte ne doit pas
               // promettre des règles qui ne seront pas proposées.
               const count =
-                rules.data?.filter((r) => r.context === c).length ?? 0
+                usable.filter((r) => r.context === c).length
               return (
                 <Card
                   key={c}
@@ -258,6 +264,7 @@ export const AddFinePage = () => {
                 // Un palier retenu marque sa règle : les deux ne peuvent pas
                 // être choisis séparément, c'est le palier qui porte le montant.
                 selected={picked?.ruleId === r.id}
+                selectedTierId={picked?.ruleId === r.id ? picked.tierId : undefined}
               />
             ))}
 

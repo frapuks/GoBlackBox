@@ -1,6 +1,14 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { createFineInput, setPaidInput, type Fine } from '@blackbox/shared'
+import {
+  createFineInput,
+  isKindEnabled,
+  setPaidInput,
+  type Fine,
+  type RuleKind,
+} from '@blackbox/shared'
 import { query, queryOne, transaction } from '../db.js'
+import { disabledKindMessage, loadFeatures } from '../features.js'
+import { penalize, type PenaltyRule } from '../penalties.js'
 import { FINE_SQL, toFine, type FineRow } from '../queries.js'
 import { notifyNewFines, notifyNewReports } from '../push.js'
 
@@ -69,11 +77,20 @@ export const fineRoutes: FastifyPluginAsync = async (app) => {
 
     const ids = await transaction(async (client) => {
       // On copie label et amount ici, une fois pour toutes.
-      const { rows: rules } = await client.query<{ label: string; amount: number }>(
-        'SELECT label, amount FROM rules WHERE id = $1 AND archived_at IS NULL',
-        [body.ruleId],
-      )
+      const { rows: rules } = await client.query<{
+        label: string
+        amount: number
+        kind: RuleKind
+      }>('SELECT label, amount, kind FROM rules WHERE id = $1 AND archived_at IS NULL', [
+        body.ruleId,
+      ])
       if (!rules.length) throw app.httpErrors.badRequest('Règle inconnue ou archivée')
+
+      // Une cotisation ou une pénalité peut aussi se donner à la main, à un
+      // joueur choisi — sauf si l'admin l'a coupée.
+      if (!isKindEnabled(rules[0]!.kind, await loadFeatures())) {
+        throw app.httpErrors.forbidden(disabledKindMessage(rules[0]!.kind))
+      }
 
       // Une règle à paliers n'a pas de montant propre : c'est le palier qui
       // décide. L'un exclut donc strictement l'autre.
@@ -173,6 +190,44 @@ export const fineRoutes: FastifyPluginAsync = async (app) => {
       [id, body.paid],
     )
     if (!updated) throw app.httpErrors.notFound('Amende introuvable')
+
+    return loadFine(id)
+  })
+
+  /**
+   * Majore UNE amende, depuis le mode gestion du fil : elle reçoit la pénalité
+   * de retard active.
+   *
+   * N'importe quelle amende validée et impayée, contrairement au bouton de
+   * l'écran Règles qui ne vise que le retard : ici c'est le gestionnaire qui
+   * décide, pas le délai. Renvoie l'amende majorée, dans son nouvel état —
+   * comme la case « payée ».
+   */
+  app.post('/fines/:id/penalize', staff, async (req): Promise<Fine> => {
+    const id = parseId(req.params)
+
+    if (!(await loadFeatures()).enablePenalties) {
+      throw app.httpErrors.forbidden(disabledKindMessage('PENALTY'))
+    }
+
+    const created = await transaction(async (client) => {
+      const { rows } = await client.query<PenaltyRule>(
+        `SELECT id, label, amount FROM rules
+          WHERE kind = 'PENALTY' AND archived_at IS NULL
+          LIMIT 1`,
+      )
+      if (!rows.length) throw app.httpErrors.conflict('Aucune pénalité de retard active')
+
+      const ids = await penalize(client, rows[0]!, req.currentUser.memberId!, id)
+      // Rien de créé : l'amende n'existe pas, est payée, en attente de
+      // validation, ou son joueur est hors amendes. Le bouton n'était proposé
+      // que dans le bon cas : c'est qu'un autre gestionnaire est passé
+      // entre-temps.
+      if (!ids.length) throw app.httpErrors.conflict('Cette amende ne peut pas être majorée')
+      return ids
+    })
+
+    void notifyNewFines(created).catch((err) => req.log.error({ err }, 'notification échouée'))
 
     return loadFine(id)
   })

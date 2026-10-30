@@ -14,9 +14,10 @@ import { palette } from '../theme'
  * Évolution de la cagnotte : trait plein sur l'historique, pointillé sur
  * l'estimation.
  *
- * Une seule série, donc aucune légende — le titre la nomme. Le passé et la
- * projection sont la MÊME grandeur : ils se distinguent par la texture, jamais
- * par une seconde couleur, qui ferait croire à deux mesures différentes.
+ * Une seule série, donc aucune légende — le titre la nomme. Le passé et les
+ * deux projections (estimée, et plancher sans nouvelle amende) sont la MÊME
+ * grandeur : ils se distinguent par la texture, jamais par une seconde
+ * couleur, qui ferait croire à deux mesures différentes.
  *
  * SVG écrit à la main : le besoin tient en deux polylignes, et une bibliothèque
  * de graphiques demanderait de découper la série en deux pour obtenir ce
@@ -83,6 +84,14 @@ export const PotChart = ({
   const currentX = x(today)
   const projectionX = projection ? x(projection.endDay) : null
 
+  // Le plancher n'apprend rien quand il se confond avec une autre ligne : sans
+  // cotisation il reste au montant actuel, sans amende estimée il rejoint la
+  // projection.
+  const minimum =
+    projection && projection.minimum > current && projection.minimum < projection.total
+      ? projection.minimum
+      : null
+
   // Les deux étiquettes se chevaucheraient en fin de saison, quand la
   // projection ne dépasse plus le montant courant que de peu. On sacrifie
   // alors celle du courant : c'est la projection qui porte l'information.
@@ -128,7 +137,7 @@ export const PotChart = ({
         // lue par les lecteurs d'écran et affichée au survol prolongé.
         aria-label={
           projection
-            ? `Évolution de la cagnotte : ${current} € aujourd'hui, ${projection.total} € estimés au ${formatDay(projection.endDay)} — dont ${projection.dues} € de cotisations restantes et ${projection.fines} € d'amendes au rythme observé`
+            ? `Évolution de la cagnotte : ${current} € aujourd'hui, ${projection.total} € estimés au ${formatDay(projection.endDay)} — dont ${projection.dues} € de cotisations restantes et ${projection.fines} € d'amendes au rythme observé. Au minimum ${projection.minimum} €, sans nouvelle amende`
             : `Évolution de la cagnotte : ${current} € aujourd'hui`
         }
         sx={{ width: '100%', height: 'auto', display: 'block', touchAction: 'pan-y' }}
@@ -158,6 +167,35 @@ export const PotChart = ({
           strokeLinejoin="round"
           strokeLinecap="round"
         />
+
+        {/* Le plancher, sous l'estimation : la même grandeur, donc la même
+            couleur, mais un pointillé plus serré et plus pâle — c'est le
+            montant acquis si plus personne ne reçoit d'amende. Dessiné en
+            premier pour passer sous la projection. */}
+        {minimum !== null && projectionX !== null && (
+          <>
+            <line
+              x1={currentX}
+              y1={y(current)}
+              x2={projectionX}
+              y2={y(minimum)}
+              stroke={palette.accent}
+              strokeWidth={1.5}
+              strokeDasharray="2 4"
+              strokeLinecap="round"
+              opacity={0.5}
+            />
+            <circle
+              cx={projectionX}
+              cy={y(minimum)}
+              r={3}
+              fill={palette.surface}
+              stroke={palette.accent}
+              strokeWidth={1.5}
+              opacity={0.7}
+            />
+          </>
+        )}
 
         {projection && (
           <>
@@ -217,6 +255,22 @@ export const PotChart = ({
             textAnchor={anchor(projectionX)}
           >
             ≈ {projection.total} €
+          </text>
+        )}
+
+        {/* Sous son point, quand celle de l'estimation est au-dessus du sien :
+            les deux étiquettes partent dans des sens opposés et ne peuvent
+            pas se chevaucher, même quand les deux montants sont proches.
+            Plafonnée au-dessus de l'axe pour ne pas toucher le mois de fin. */}
+        {minimum !== null && projectionX !== null && (
+          <text
+            x={projectionX}
+            y={Math.min(y(minimum) + 16, PLOT_BOTTOM - 4)}
+            fill={palette.textMuted}
+            fontSize={10}
+            textAnchor={anchor(projectionX)}
+          >
+            min. {minimum} €
           </text>
         )}
 

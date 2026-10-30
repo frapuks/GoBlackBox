@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import {
+  Box,
   Checkbox,
   Chip,
   CircularProgress,
@@ -13,6 +14,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import FilterListIcon from '@mui/icons-material/FilterList'
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck'
+import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import type { Fine } from '@blackbox/shared'
 import {
   useConfirmFine,
@@ -20,7 +22,10 @@ import {
   useFines,
   useMe,
   useMembers,
+  usePenalizeFine,
+  useRules,
   useSetFinePaid,
+  useSettings,
 } from '../api/hooks'
 import {
   Amount,
@@ -54,15 +59,37 @@ export const FeedPage = () => {
   const [managing, setManaging] = useState(false)
   /** Amende dont la suppression attend confirmation. */
   const [deleting, setDeleting] = useState<Fine | null>(null)
+  /** Amende dont la majoration attend confirmation. */
+  const [penalizing, setPenalizing] = useState<Fine | null>(null)
 
   const me = useMe()
   const members = useMembers()
+  const settings = useSettings()
+  const rules = useRules()
   const fines = useFines({ unpaid, memberId: memberId || undefined })
   const setPaid = useSetFinePaid()
   const remove = useDeleteFine()
   const confirmFine = useConfirmFine()
+  const penalize = usePenalizeFine()
 
   const isStaff = me.data?.user.role === 'ADMIN' || me.data?.user.role === 'MANAGER'
+
+  /**
+   * La pénalité qu'une majoration donnerait. Absente — fonctionnalité coupée,
+   * ou aucune pénalité créée —, le mode gestion ne propose pas de majorer.
+   */
+  const penaltyRule = settings.data?.enablePenalties
+    ? rules.data?.find((r) => r.kind === 'PENALTY' && r.archivedAt === null)
+    : undefined
+
+  /**
+   * Même condition que le serveur : validée, impayée, et un joueur toujours
+   * amendable. Le retard n'entre pas en compte — majorer à la main est une
+   * décision du gestionnaire, pas du délai.
+   */
+  const receivesFines = new Map((members.data ?? []).map((m) => [m.id, m.receivesFines]))
+  const canPenalize = (f: Fine) =>
+    f.status === 'CONFIRMED' && f.paidAt === null && receivesFines.get(f.memberId) === true
 
   /**
    * Amendes cochées pendant la séance de gestion, dans leur dernier état connu.
@@ -239,6 +266,24 @@ export const FeedPage = () => {
                   <StatusChip state={fineState(paid, f.isLate, f.isPenalized)} />
                 ))}
 
+              {/* Une place réservée sur chaque ligne, bouton ou non : sans elle,
+                  les montants se décaleraient d'une ligne à l'autre. Elle
+                  n'existe que si la majoration est possible du tout. */}
+              {isStaff && managing && penaltyRule && (
+                <Box sx={{ width: 34, display: 'flex', justifyContent: 'center' }}>
+                  {canPenalize(f) && (
+                    <IconButton
+                      size="small"
+                      aria-label="Majorer cette amende"
+                      onClick={() => setPenalizing(f)}
+                      sx={{ color: palette.danger }}
+                    >
+                      <ReportProblemIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                </Box>
+              )}
+
               {isStaff &&
                 managing &&
                 (pending ? (
@@ -310,6 +355,49 @@ export const FeedPage = () => {
                 : 'Elle disparaîtra du fil et des totaux. Cette action est définitive.'}
             </Typography>
           </Stack>
+        )}
+      </ConfirmDialog>
+
+      {/* Une confirmation, comme pour la suppression : majorer crée une amende
+          et prévient le joueur, ce qui ne se défait pas d'un second clic. */}
+      <ConfirmDialog
+        open={penalizing !== null}
+        title="Majorer cette amende ?"
+        confirmLabel="Majorer"
+        danger
+        pending={penalize.isPending}
+        onClose={() => {
+          setPenalizing(null)
+          // Une erreur ne doit pas réapparaître à l'ouverture suivante.
+          penalize.reset()
+        }}
+        onConfirm={() => {
+          if (!penalizing) return
+          const key = session.id
+          penalize.mutate(penalizing.id, {
+            onSuccess: (fine) => {
+              // Gardée dans la séance, elle doit y prendre son nouvel état.
+              if (kept?.has(fine.id)) keep(key, fine.id, fine)
+              setPenalizing(null)
+            },
+          })
+        }}
+      >
+        {penalizing && penaltyRule && (
+          <Stack spacing={0.5}>
+            <Typography sx={{ fontWeight: 600 }}>{penalizing.memberName}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {penalizing.label} · {penalizing.amount} € · {formatAgo(penalizing.createdAt)}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ pt: 1 }}>
+              Une pénalité « {penaltyRule.label} » de {penaltyRule.amount} € lui sera ajoutée.
+            </Typography>
+          </Stack>
+        )}
+        {penalize.error && (
+          <Typography variant="body2" sx={{ color: palette.danger, pt: 1 }}>
+            {penalize.error.message}
+          </Typography>
         )}
       </ConfirmDialog>
     </>

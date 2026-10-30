@@ -30,6 +30,13 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
   type SettingsRow = {
     late_after_days: number
     allow_player_reports: boolean
+    enable_digest: boolean
+    enable_pot_chart: boolean
+    enable_badges: boolean
+    enable_kitty_dates: boolean
+    enable_penalties: boolean
+    enable_dues: boolean
+    enable_leaderboard: boolean
     first_badge_icon: BadgeImage | null
     last_badge_icon: BadgeImage | null
     first_fine_badge_icon: BadgeImage | null
@@ -46,6 +53,8 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
   const COLUMNS =
     'late_after_days, allow_player_reports, invite_code, bank_name, bank_iban, ' +
+    'enable_digest, enable_pot_chart, enable_badges, enable_kitty_dates, ' +
+    'enable_penalties, enable_dues, enable_leaderboard, ' +
     'first_badge_icon, last_badge_icon, first_fine_badge_icon, ' +
     'end_date, usage_start_date, usage_end_date'
 
@@ -59,24 +68,12 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/settings', auth, async (req): Promise<Settings> => {
     const row = await queryOne<SettingsRow>(`SELECT ${COLUMNS} FROM settings WHERE id = 1`)
-
-    const base: Settings = {
-      lateAfterDays: row!.late_after_days,
-      allowPlayerReports: row!.allow_player_reports,
-      bankName: row!.bank_name,
-      bankIban: row!.bank_iban,
-      firstBadgeIcon: row!.first_badge_icon,
-      lastBadgeIcon: row!.last_badge_icon,
-      firstFineBadgeIcon: row!.first_fine_badge_icon,
-      endDate: toDay(row!.end_date),
-      usageStartDate: toDay(row!.usage_start_date),
-      usageEndDate: toDay(row!.usage_end_date),
-    }
+    const { inviteCode, ...base } = toSettings(row!)
 
     // Les gestionnaires distribuent le code au même titre que l'admin.
     // Un joueur ne le voit jamais.
     const isStaff = req.currentUser.role === 'ADMIN' || req.currentUser.role === 'MANAGER'
-    return isStaff ? { ...base, inviteCode: row!.invite_code } : base
+    return isStaff ? { ...base, inviteCode } : base
   })
 
   const RETURNING = `RETURNING ${COLUMNS}`
@@ -84,6 +81,13 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
   const toSettings = (row: SettingsRow): Settings => ({
     lateAfterDays: row.late_after_days,
     allowPlayerReports: row.allow_player_reports,
+    enableDigest: row.enable_digest,
+    enablePotChart: row.enable_pot_chart,
+    enableBadges: row.enable_badges,
+    enableKittyDates: row.enable_kitty_dates,
+    enablePenalties: row.enable_penalties,
+    enableDues: row.enable_dues,
+    enableLeaderboard: row.enable_leaderboard,
     bankName: row.bank_name,
     bankIban: row.bank_iban,
     firstBadgeIcon: row.first_badge_icon,
@@ -169,9 +173,25 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
     const row = await queryOne<SettingsRow>(
       `UPDATE settings
-          SET allow_player_reports = COALESCE($1, allow_player_reports)
+          SET allow_player_reports = COALESCE($1, allow_player_reports),
+              enable_digest        = COALESCE($2, enable_digest),
+              enable_pot_chart     = COALESCE($3, enable_pot_chart),
+              enable_badges        = COALESCE($4, enable_badges),
+              enable_kitty_dates   = COALESCE($5, enable_kitty_dates),
+              enable_penalties     = COALESCE($6, enable_penalties),
+              enable_dues          = COALESCE($7, enable_dues),
+              enable_leaderboard   = COALESCE($8, enable_leaderboard)
         WHERE id = 1 ${RETURNING}`,
-      [body.allowPlayerReports ?? null],
+      [
+        body.allowPlayerReports ?? null,
+        body.enableDigest ?? null,
+        body.enablePotChart ?? null,
+        body.enableBadges ?? null,
+        body.enableKittyDates ?? null,
+        body.enablePenalties ?? null,
+        body.enableDues ?? null,
+        body.enableLeaderboard ?? null,
+      ],
     )
 
     return toSettings(row!)

@@ -182,9 +182,22 @@ export const loadBadges = async (
     first_badge_icon: BadgeImage | null
     last_badge_icon: BadgeImage | null
     first_fine_badge_icon: BadgeImage | null
+    enable_badges: boolean
+    enable_leaderboard: boolean
   }>(
-    'SELECT first_badge_icon, last_badge_icon, first_fine_badge_icon FROM settings WHERE id = 1',
+    `SELECT first_badge_icon, last_badge_icon, first_fine_badge_icon,
+            enable_badges, enable_leaderboard
+       FROM settings WHERE id = 1`,
   )
+
+  // Badges coupés : personne n'en porte, sur aucun écran. Les icônes restent
+  // en base et reviennent telles quelles à la réactivation.
+  if (!icons?.enable_badges) return byMember
+
+  // Sans classement, la cagnotte n'affiche qu'une liste alphabétique :
+  // « premier » et « dernier » trahiraient sur chaque avatar l'ordre qu'elle
+  // cache.
+  const rankBadges = icons.enable_leaderboard
 
   // Distinction HISTORIQUE : elle ne change plus de porteur, sauf si l'amende
   // est supprimée. Les cotisations sont écartées — elles tombent sur toute
@@ -193,7 +206,7 @@ export const loadBadges = async (
   // Départage par identifiant : un lot d'amendes créé en une transaction porte
   // le même `created_at`, NOW() étant figé pour toute la transaction. Sans ce
   // second critère, le porteur changerait d'une requête à l'autre.
-  if (icons?.first_fine_badge_icon) {
+  if (icons.first_fine_badge_icon) {
     const pioneer = await queryOne<{ member_id: number; amount: number }>(
       `SELECT f.member_id, f.amount
          FROM fines f
@@ -219,7 +232,7 @@ export const loadBadges = async (
   // Pour ces deux-là, le décompte est celui de TOUTES leurs amendes : c'est ce
   // qui les a placés à cette extrémité du classement.
   const first = ranked[0]
-  if (icons?.first_badge_icon && first && total(first) > 0) {
+  if (rankBadges && icons.first_badge_icon && first && total(first) > 0) {
     push(first.id, {
       source: 'FIRST',
       icon: icons.first_badge_icon,
@@ -233,7 +246,8 @@ export const loadBadges = async (
   // personne n'a d'amende distinguerait le dernier de l'alphabet.
   const last = ranked[ranked.length - 1]
   if (
-    icons?.last_badge_icon &&
+    rankBadges &&
+    icons.last_badge_icon &&
     last &&
     ranked.length >= MIN_FOR_LAST &&
     total(last) < total(ranked[0]!)

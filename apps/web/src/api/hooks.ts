@@ -4,6 +4,7 @@ import type {
   ApplyRuleResult,
   ClaimableMember,
   Dashboard,
+  FeatureKey,
   Fine,
   MemberDetail,
   MemberSummary,
@@ -93,10 +94,11 @@ export const useDashboard = () =>
   useQuery({ queryKey: ['dashboard'], queryFn: () => apiFetch<Dashboard>('/dashboard') })
 
 /** Série temporelle de la cagnotte, pour le graphique du Classement. */
-export const usePotHistory = () =>
+export const usePotHistory = (enabled = true) =>
   useQuery({
     queryKey: ['pot-history'],
     queryFn: () => apiFetch<PotHistory>('/dashboard/history'),
+    enabled,
   })
 
 export const useMembers = () =>
@@ -153,6 +155,10 @@ export const useSetFinePaid = () =>
 
 export const useDeleteFine = () =>
   useDataMutation((id: number) => apiFetch<void>(`/fines/${id}`, { method: 'DELETE' }))
+
+/** Majore une amende en retard : elle reçoit la pénalité de retard active. */
+export const usePenalizeFine = () =>
+  useDataMutation((id: number) => post<Fine>(`/fines/${id}/penalize`))
 
 /** Validation d'un signalement : c'est ce geste qui notifie le joueur. */
 export const useConfirmFine = () =>
@@ -272,11 +278,16 @@ export const useUpdateBadges = () =>
     patch<Settings>('/settings/badges', v),
   )
 
-/** Interrupteurs de fonctionnalité : route distincte, réservée à l'admin. */
+/**
+ * Interrupteurs de fonctionnalité : route distincte, réservée à l'admin.
+ *
+ * Tout est invalidé ensuite, et c'est nécessaire : un interrupteur change des
+ * données calculées par le serveur — retard, badges, prévision —, pas seulement
+ * l'affichage.
+ */
 export const useUpdateFeatures = () =>
-  useDataMutation(
-    (v: { allowPlayerReports?: boolean }) =>
-      patch<Settings>('/settings/features', v),
+  useDataMutation((v: Partial<Record<FeatureKey, boolean>>) =>
+    patch<Settings>('/settings/features', v),
   )
 
 /** Renouvellement du code : action de distribution, ouverte aux gestionnaires. */

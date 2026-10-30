@@ -227,6 +227,7 @@ export const buildDigest = async (weekStart: Date): Promise<WeeklyDigest> => {
       label: now.badge.label,
       to: names.get(now.memberId) ?? '?',
       from: then ? (names.get(then.memberId) ?? '?') : null,
+      source: now.badge.source,
     })
   }
 

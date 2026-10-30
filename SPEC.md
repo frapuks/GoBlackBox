@@ -172,7 +172,7 @@ Changer `late_after_days` reclasse instantanément tout l'historique. C'est voul
 | Rendre un participant amendable ou non | ✅ | ❌ | ❌ |
 | Détacher un compte de son participant | ✅ | ❌ | ❌ |
 | Réinitialiser le mot de passe d un autre compte | ✅ | ❌ | ❌ |
-| Activer une fonctionnalité (pénalités, cotisations, signalements) | ✅ | ❌ | ❌ |
+| Activer une fonctionnalité (voir § 11) | ✅ | ❌ | ❌ |
 
 ADMIN est **unique et non transférable** en V1.
 
@@ -230,12 +230,16 @@ POST   /fines                 admin/manager — { memberIds[], ruleId, tierId? }
                               la règle a des paliers, refusé sinon
 DELETE /fines/:id             admin/manager
 PATCH  /fines/:id/paid        admin/manager
+POST   /fines/:id/penalize    admin/manager — majore UNE amende validée et
+                              impayée, même pas en retard ou déjà majorée, avec
+                              la pénalité de retard active. Refusé si les
+                              pénalités sont coupées ou absentes
 
 PATCH  /me                    displayName, mot de passe
 GET    /settings              tous  → { lateAfterDays }
                               admin → + { inviteCode }
 PATCH  /settings              délai + dates de la caisse — admin/manager
-PATCH  /settings/features     admin — pénalités, cotisations, signalements
+PATCH  /settings/features     admin — interrupteurs de fonctionnalité (§ 11)
 POST   /settings/invite-code  admin — renouvelle le code
 ```
 
@@ -260,7 +264,7 @@ FAB `+` flottant sur Classement et Fil (admin/manager uniquement).
 
 | Route | Page | Contenu |
 |---|---|---|
-| `/` | **Classement** | Cagnotte totale en gros. Liste des membres triés par montant dû décroissant : rang, initiales, nom, dû, payé, badge « en retard ». Ligne estompée si tout payé. Tap → fiche membre |
+| `/` | **Classement** | Cagnotte totale en gros. Liste des membres triés par montant dû décroissant : rang, initiales, nom, reste à payer (une seule couleur, sans distinguer le retard). Ligne estompée si tout payé. Tap → fiche membre |
 | `/fines` | **Fil d'activité** | Antéchronologique. `Nom · règle · montant · il y a X`. Checkbox payé à droite (admin/manager). Lignes payées grisées et barrées. Filtres : `Impayées` + par joueur |
 | `/rules` | **Règles** | Deux sections. Trois sections, chacune avec son bouton « Ajouter » à droite du titre. **Retard de paiement** : le délai en jours (éditable par l'admin) puis les pénalités, avec leur bouton « Appliquer aux N retardataires ». **Cotisation** : bouton « Appliquer aux N membres ». **Règles** : les infractions, regroupées par contexte (Match / Entraînement / Autres). Le formulaire permet d'ajouter des paliers ; le champ « montant » disparaît dès qu'il y en a un. Les cartes d'application affichent leur date de dernière application. **Règles** : les infractions, `libellé · description · montant`. Création et archivage pour admin/manager, archivées masquées derrière un toggle |
 | `/me` | **Moi** | Mon solde en gros. Mes amendes, impayées d'abord, avec badge de statut **non cliquable**. Lien discret `Réglages` en bas |
@@ -496,26 +500,48 @@ valider, seule la création de nouveaux est bloquée.
 
 ## 11. Fonctionnalités activables
 
-Trois interrupteurs, **réservés à l'admin**, dans Réglages → Fonctionnalités :
+Des interrupteurs **réservés à l'admin**, dans Réglages → Fonctionnalités. Ils
+s'appliquent à toute l'équipe (migration `024`) :
 
-| Réglage | Défaut | Effet |
+| Réglage | Défaut | Effet quand il est coupé |
 |---|---|---|
-| Pénalités de retard | activé | masque la section *Retard de paiement* **et éteint toute la notion de retard** |
-| Cotisations | activé | masque la section *Cotisation* |
-| Signalements par les joueurs | désactivé | ouvre la saisie aux joueurs |
+| Pénalités de retard | activé | section masquée, **et toute la notion de retard s'éteint** (voir plus bas) |
+| Cotisations | activé | section masquée, et la prévision ne compte plus de cotisations restantes |
+| Badges | activé | plus aucun badge nulle part, ni classement de règle, ni choix d'icône |
+| Récap de la semaine | activé | carte masquée — `GET /digest` renvoie `null`, le résumé continue d'être produit |
+| Graphique d'évolution | activé | graphique et prévision masqués |
+| Dates de la caisse | activé | bloc masqué sous la cagnotte, et dans les Réglages |
+| Classement | **désactivé** | la cagnotte liste les joueurs par ordre alphabétique, nom et total seulement |
+| Signalements par les joueurs | désactivé | *activé* : ouvre la saisie aux joueurs |
 
-Les deux premiers sont activés par défaut : c'est le comportement existant, une
-mise à jour ne doit rien faire disparaître.
+Tout est activé par défaut sauf les signalements : c'est le comportement
+existant, une mise à jour ne doit rien faire disparaître.
 
-Couper une fonctionnalité **ne supprime rien** — les règles restent en base et
-réapparaissent telles quelles si on la réactive. Ce qui change :
+Le classement fait exception, par choix : l'affichage de base de la cagnotte est
+la liste simple, et l'admin allume le classement s'il le veut. À la mise à jour,
+une équipe qui voyait le classement voit donc la liste.
+
+Couper une fonctionnalité **ne supprime rien** — règles, amendes et icônes
+restent en base et réapparaissent telles quelles si on la réactive. Pour les
+pénalités et les cotisations :
 
 - la section disparaît de l'écran Règles ;
-- ses règles ne sont plus proposées à l'écran d'ajout d'amende ;
-- le serveur **refuse** d'en créer une nouvelle ou d'appliquer une existante.
+- leurs règles ne sont plus proposées à l'écran d'ajout d'amende ;
+- le serveur **refuse** d'en créer une nouvelle, de l'appliquer ou de la donner
+  à la main (`POST /fines`) ;
+- leur rappel ne part plus, et sa préférence disparaît des Réglages.
 
-Ce dernier point compte : le masquage côté front n'est qu'un confort, et un
-appel forgé ne doit pas pouvoir alimenter une fonctionnalité éteinte.
+Ce point compte : le masquage côté front n'est qu'un confort, et un appel forgé
+ne doit pas pouvoir alimenter une fonctionnalité éteinte.
+
+### Sans classement, rien ne classe
+
+Classement coupé, les badges « premier » et « dernier » ne sont plus décernés, et le récap perd sa
+rubrique *Classement* (entrées et sorties du podium) : sinon l'ordre que la liste
+cache se lirait ailleurs. Les badges de règle restent.
+
+Le récap est filtré **à la lecture**, pas à la production : il est figé le lundi,
+et un interrupteur basculé dans la semaine doit valoir tout de suite.
 
 ### Couper les pénalités éteint tout le retard
 
@@ -534,7 +560,16 @@ AND (f.created_at AT TIME ZONE 'Europe/Paris')::date + s.late_after_days
 ```
 
 Aucun écran n'a donc à s'en soucier, et surtout aucun ne peut l'oublier : le
-serveur renvoie simplement `isLate: false` partout.
+serveur renvoie simplement `isLate: false` partout. Le statut « majorée », le
+décompte du bouton de pénalité et le rappel en découlent aussi.
+
+À la réactivation, les vieilles amendes impayées passent toutes « en retard »
+d'un coup, puisque le retard se calcule à la lecture. Les gestionnaires abonnés
+reçoivent alors le rappel de pénalité ; les joueurs, rien.
+
+Ces interrupteurs avaient été retirés par la migration `022` : invisibles, une
+valeur restée à faux coupait le retard sans recours. Ils reviennent **affichés**
+dans les Réglages, ce qui lève l'objection.
 
 ---
 
@@ -748,6 +783,14 @@ cotisation par cotisation. La simplification porte sur le chemin, jamais sur la
 destination.
 
 L'API ne renvoie donc que les deux extrémités.
+
+### Le plancher
+
+Une seconde ligne, plus pâle et plus finement pointillée, part du même point :
+`minimum = montant actuel + cotisations restantes`. C'est ce que la caisse
+atteindra si plus personne ne reçoit d'amende — la seule part de la prévision
+qui ne soit pas estimée. Elle n'est pas tracée quand elle se confond avec une
+autre ligne : sans cotisation restante, ou sans amende estimée.
 
 ### Ce que ça corrige, mesuré
 

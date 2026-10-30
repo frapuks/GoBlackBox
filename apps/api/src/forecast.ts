@@ -94,6 +94,7 @@ export const buildProjection = ({
     // Déduit du total plutôt que recalculé : les deux parts s'additionnent
     // alors exactement, malgré les arrondis.
     fines: total - currentTotal - dues,
+    minimum: currentTotal + dues,
   }
 }
 

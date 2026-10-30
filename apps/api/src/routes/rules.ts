@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import {
   createRuleInput,
+  isKindEnabled,
   updateRuleInput,
   type ApplyRuleResult,
   type BadgeImage,
@@ -11,8 +12,9 @@ import {
   type RuleTier,
 } from '@blackbox/shared'
 import { query, queryOne, transaction } from '../db.js'
-import { IS_PENALIZABLE_SQL } from '../queries.js'
 import { CHAMPION_ORDER, playerTotalsJoin } from '../badges.js'
+import { disabledKindMessage, loadFeatures } from '../features.js'
+import { penalize } from '../penalties.js'
 import { notifyNewFines } from '../push.js'
 
 type RuleRow = {
@@ -97,6 +99,9 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
     const body = createRuleInput.parse(req.body)
     if (body.kind !== 'FINE' && body.tiers.length) {
       throw app.httpErrors.badRequest('Seule une règle d’infraction peut avoir des paliers')
+    }
+    if (!isKindEnabled(body.kind, await loadFeatures())) {
+      throw app.httpErrors.forbidden(disabledKindMessage(body.kind))
     }
 
     // Une seule cotisation et une seule pénalité de retard, par choix : elles
@@ -218,6 +223,12 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
     const id = Number((req.params as { id: string }).id)
     if (!Number.isInteger(id) || id <= 0) throw app.httpErrors.badRequest('Identifiant invalide')
 
+    // Le classement d'une règle est la course à son badge : sans badges, il
+    // n'a plus d'objet et ne s'affiche nulle part.
+    if (!(await loadFeatures()).enableBadges) {
+      throw app.httpErrors.forbidden('Les badges sont désactivés')
+    }
+
     return query<RuleRankingEntry>(
       `SELECT f.member_id          AS "memberId",
               m.display_name       AS name,
@@ -238,6 +249,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
     if (!Number.isInteger(id) || id <= 0) throw app.httpErrors.badRequest('Identifiant invalide')
 
     const authorMemberId = req.currentUser.memberId!
+    const features = await loadFeatures()
 
     const created = await transaction(async (client) => {
       const { rows: rules } = await client.query<{
@@ -252,6 +264,9 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
         throw app.httpErrors.badRequest(
           "Une règle d'infraction se donne depuis l'écran d'ajout d'amende",
         )
+      }
+      if (!isKindEnabled(rule.kind, features)) {
+        throw app.httpErrors.forbidden(disabledKindMessage(rule.kind))
       }
 
       // Une cotisation tombe sur chaque membre concerné par les amendes, une
@@ -268,39 +283,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
 
       // Une pénalité, elle, tombe sur chaque AMENDE en retard et pas encore
       // majorée — une par amende, pas une par joueur.
-      //
-      // Trois temps dans une seule requête :
-      //  1. les amendes visées, verrouillées : deux gestionnaires qui cliquent
-      //     en même temps ne majorent pas deux fois la même ;
-      //  2. leur date de majoration, posée à maintenant : elles deviennent
-      //     « majorées » et le clic suivant les ignorera pendant le délai ;
-      //  3. une pénalité par amende marquée.
-      //
-      // Toutes les parties d'une requête voient l'état d'AVANT : les pénalités
-      // créées ici ne sont donc pas elles-mêmes majorées dans le même clic. Elles
-      // le seront au suivant, une fois leur propre délai écoulé.
-      //
-      // Un membre exempté n'est jamais visé, même s'il traîne un historique.
-      const { rows } = await client.query<{ id: number }>(
-        `WITH targets AS (
-           SELECT f.id, f.member_id
-             FROM fines f
-             JOIN members m ON m.id = f.member_id
-             CROSS JOIN settings s
-            WHERE m.receives_fines AND ${IS_PENALIZABLE_SQL}
-            FOR UPDATE OF f
-         ),
-         marked AS (
-           UPDATE fines SET penalized_at = NOW()
-            WHERE id IN (SELECT id FROM targets)
-            RETURNING member_id
-         )
-         INSERT INTO fines (member_id, rule_id, amount, label, created_by)
-         SELECT member_id, $1, $2, $3, $4 FROM marked
-         RETURNING id`,
-        [id, rule.amount, rule.label, authorMemberId],
-      )
-      return rows.map((r) => r.id)
+      return penalize(client, { id, label: rule.label, amount: rule.amount }, authorMemberId)
     })
 
     void notifyNewFines(created).catch((err) => req.log.error({ err }, 'notification échouée'))

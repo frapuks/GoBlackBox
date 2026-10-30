@@ -58,7 +58,7 @@ const runDuesReminder = async (now: Date) => {
             (SELECT MAX(f.created_at) FROM fines f WHERE f.rule_id = r.id) AS last_applied_at
        FROM rules r
        CROSS JOIN settings s
-      WHERE r.kind = 'DUES' AND r.archived_at IS NULL
+      WHERE r.kind = 'DUES' AND r.archived_at IS NULL AND s.enable_dues
       LIMIT 1`,
   )
   if (!rule) return
@@ -129,7 +129,7 @@ const runPenaltyReminder = async (now: Date) => {
             ) AS has_targets
        FROM rules r
        CROSS JOIN settings s
-      WHERE r.kind = 'PENALTY' AND r.archived_at IS NULL
+      WHERE r.kind = 'PENALTY' AND r.archived_at IS NULL AND s.enable_penalties
       LIMIT 1`,
   )
   // Aucune heure d'attente, pas même la nuit : le rappel part à l'instant où

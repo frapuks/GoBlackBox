@@ -6,6 +6,8 @@ import { Amount, Card, RuleAmount } from './ui'
 import { RuleRanking } from './RuleRanking'
 import { palette } from '../theme'
 
+const SELECTED_BG = 'rgba(249,115,22,0.12)'
+
 /**
  * Carte d'une règle, partagée entre la page Règles et l'étape 3 de l'ajout
  * d'amende. Un seul composant, donc les deux écrans ne peuvent pas diverger.
@@ -23,6 +25,7 @@ export const RuleCard = ({
   onSelect,
   action,
   selected = false,
+  selectedTierId,
   showRanking = false,
 }: {
   rule: Rule
@@ -30,6 +33,8 @@ export const RuleCard = ({
   action?: React.ReactNode
   /** Vrai à l'ajout d'amende, sur la règle retenue tant qu'elle n'est pas validée. */
   selected?: boolean
+  /** Le palier retenu, quand la règle en a : c'est lui qui se surligne. */
+  selectedTierId?: number
   /**
    * La course au badge dans les détails. Faux à l'ajout d'amende : on y choisit
    * une règle debout au bord du terrain, pas le moment de consulter un palmarès.
@@ -56,9 +61,13 @@ export const RuleCard = ({
         opacity: archived ? 0.45 : 1,
         // Même marquage que les joueurs à l'étape 1 : bordure ET fond, la seule
         // bordure passe inaperçue sur un téléphone au soleil.
+        //
+        // Une règle à paliers ne garde que la bordure : le fond va au palier
+        // retenu, sans quoi toute la carte est surlignée et on ne voit plus
+        // lequel a été choisi.
         border: '2px solid',
         borderColor: selected ? palette.accent : 'transparent',
-        bgcolor: selected ? 'rgba(249,115,22,0.12)' : 'background.paper',
+        bgcolor: selected && !hasTiers ? SELECTED_BG : 'background.paper',
       }}
     >
       <Box
@@ -117,24 +126,38 @@ export const RuleCard = ({
             </Typography>
           )}
 
-          {rule.tiers.map((t) => (
-            <Box
-              key={t.id}
-              onClick={onSelect ? () => onSelect(rule.id, t.id) : undefined}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-                px: 2,
-                py: 1.75,
-                cursor: onSelect ? 'pointer' : 'default',
-                borderTop: '1px solid rgba(148,163,184,0.08)',
-              }}
-            >
-              <Typography sx={{ flex: 1 }}>{t.label}</Typography>
-              <Amount amount={t.amount} state="due" />
-            </Box>
-          ))}
+          {rule.tiers.map((t) => {
+            const tierSelected = selected && t.id === selectedTierId
+            return (
+              <Box
+                key={t.id}
+                onClick={onSelect ? () => onSelect(rule.id, t.id) : undefined}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 2,
+                  px: 2,
+                  py: 1.75,
+                  cursor: onSelect ? 'pointer' : 'default',
+                  borderTop: '1px solid rgba(148,163,184,0.08)',
+                  ...(tierSelected && {
+                    bgcolor: SELECTED_BG,
+                    boxShadow: `inset 3px 0 0 ${palette.accent}`,
+                  }),
+                }}
+              >
+                <Typography
+                  sx={{
+                    flex: 1,
+                    ...(tierSelected && { color: palette.accent, fontWeight: 600 }),
+                  }}
+                >
+                  {t.label}
+                </Typography>
+                <Amount amount={t.amount} state="due" />
+              </Box>
+            )
+          })}
 
           {ranking && <RuleRanking ruleId={rule.id} badge={rule.badgeIcon!} />}
         </Box>

@@ -174,6 +174,11 @@ export type PotProjection = {
   total: number
   dues: number
   fines: number
+  /**
+   * Le plancher : le montant actuel et les cotisations restantes, sans aucune
+   * amende de plus. Seule partie de la prévision qui ne soit pas estimée.
+   */
+  minimum: number
 }
 
 export type PotHistory = {
@@ -535,7 +540,24 @@ export const updateBadgesInput = z.object({
 
 export const updateFeaturesInput = z.object({
   allowPlayerReports: z.boolean().optional(),
+  enableDigest: z.boolean().optional(),
+  enablePotChart: z.boolean().optional(),
+  enableBadges: z.boolean().optional(),
+  enableKittyDates: z.boolean().optional(),
+  enablePenalties: z.boolean().optional(),
+  enableDues: z.boolean().optional(),
+  enableLeaderboard: z.boolean().optional(),
 })
+export type FeatureKey = keyof z.infer<typeof updateFeaturesInput>
+
+/**
+ * Une sorte de règle est-elle utilisable ? Les infractions le sont toujours :
+ * elles sont le cœur de la caisse, pas une fonctionnalité qu'on coupe.
+ */
+export const isKindEnabled = (
+  kind: RuleKind,
+  features: { enablePenalties: boolean; enableDues: boolean },
+) => kind === 'FINE' || (kind === 'DUES' ? features.enableDues : features.enablePenalties)
 
 export type Settings = {
   lateAfterDays: number
@@ -552,6 +574,23 @@ export type Settings = {
   usageEndDate: string | null
   /** Les joueurs peuvent-ils signaler une amende, à valider par un gestionnaire ? */
   allowPlayerReports: boolean
+  /**
+   * Interrupteurs de fonctionnalité, réglés par l'admin pour toute l'équipe.
+   * Couper ne supprime rien : tout réapparaît tel quel à la réactivation.
+   */
+  enableDigest: boolean
+  enablePotChart: boolean
+  /** Badges partout, et classement de chaque règle. */
+  enableBadges: boolean
+  enableKittyDates: boolean
+  /** Pénalité de retard ET tout le statut « en retard » : le délai lui appartient. */
+  enablePenalties: boolean
+  enableDues: boolean
+  /**
+   * Le classement de la cagnotte. Coupé, c'est l'affichage de base : une liste
+   * alphabétique des joueurs et de leur total.
+   */
+  enableLeaderboard: boolean
   /** Icônes des badges décernés par le système. null = pas de badge. */
   firstBadgeIcon: BadgeImage | null
   lastBadgeIcon: BadgeImage | null
@@ -683,8 +722,19 @@ export type WeeklyDigest = {
   /** Le plus d'amendes, puis le plus gros montant. null si la semaine est vide. */
   topPlayer: { name: string; count: number; amount: number } | null
 
-  /** Badges qui ont changé de porteur. `from` null = distinction nouvellement décernée. */
-  badgeChanges: { image: BadgeImage; label: string; to: string; from: string | null }[]
+  /**
+   * Badges qui ont changé de porteur. `from` null = distinction nouvellement décernée.
+   *
+   * `source` sert à retirer « premier » et « dernier » à la lecture quand le
+   * classement est coupé. Absente des résumés antérieurs à son ajout.
+   */
+  badgeChanges: {
+    image: BadgeImage
+    label: string
+    to: string
+    from: string | null
+    source?: BadgeSource
+  }[]
 
   /** Mouvements marquants : entrées et sorties du podium, plus grosses montée et chute. */
   rankMoves: { name: string; from: number | null; to: number }[]

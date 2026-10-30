@@ -30,6 +30,7 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import LockResetIcon from '@mui/icons-material/LockReset'
 import {
   type BadgeImage,
+  type FeatureKey,
   type MemberSummary,
 } from '@blackbox/shared'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
@@ -77,6 +78,7 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
  */
 export const SettingsPage = () => {
   const me = useMe()
+  const settings = useSettings()
   const isAdmin = me.data?.user.role === 'ADMIN'
   const isStaff = isAdmin || me.data?.user.role === 'MANAGER'
 
@@ -102,11 +104,13 @@ export const SettingsPage = () => {
           </Divider>
 
           {/* Un gestionnaire administre le quotidien : code d'invitation,
-              participants. Restent à l'admin seul les deux décisions qui
-              engagent l'équipe — les rôles et l'ouverture des signalements. */}
-          <KittyDatesSection />
+              participants. Restent à l'admin seul les décisions qui engagent
+              l'équipe — les rôles et les fonctionnalités. */}
+          {/* Une section coupée par l'admin disparaît aussi d'ici : régler ce
+              que personne ne voit n'aurait pas de sens. */}
+          {settings.data?.enableKittyDates && <KittyDatesSection />}
           <FeaturesSection canEdit={isAdmin} />
-          <SystemBadgesSection canEdit={isAdmin} />
+          {settings.data?.enableBadges && <SystemBadgesSection canEdit={isAdmin} />}
           <InviteCodeSection canRegenerate={isAdmin} />
           <MembersSection canManage={isAdmin} />
         </>
@@ -323,12 +327,17 @@ const NotificationsSection = () => {
  */
 const NotificationKindsSection = () => {
   const me = useMe()
+  const settings = useSettings()
   const updateNotifications = useUpdateNotifications()
 
   const prefs = me.data?.user.notifications
   if (!prefs) return null
 
   const isStaff = me.data?.user.role === 'ADMIN' || me.data?.user.role === 'MANAGER'
+  // Un rappel d'une fonctionnalité coupée ne partira jamais : la préférence est
+  // gardée, mais l'interrupteur disparaît.
+  const penalties = isStaff && settings.data?.enablePenalties
+  const dues = isStaff && settings.data?.enableDues
 
   const toggle = (label: string, field: 'fines' | 'penalty' | 'dues' | 'reports') => (
     <FormControlLabel
@@ -350,8 +359,8 @@ const NotificationKindsSection = () => {
     <Section title="Types de notification">
       <Stack spacing={0}>
         {toggle('Mes amendes', 'fines')}
-        {isStaff && toggle('Rappel des retards de paiement', 'penalty')}
-        {isStaff && toggle('Rappel des cotisations', 'dues')}
+        {penalties && toggle('Rappel des retards de paiement', 'penalty')}
+        {dues && toggle('Rappel des cotisations', 'dues')}
         {isStaff && toggle('Signalement à valider', 'reports')}
       </Stack>
 
@@ -591,40 +600,42 @@ const SystemBadgesSection = ({ canEdit }: { canEdit: boolean }) => {
  * disparaître la section correspondante au lieu de laisser un écran encombré
  * de choses inutilisées.
  */
+const FEATURES: { field: FeatureKey; label: string }[] = [
+  { field: 'enablePenalties', label: 'Pénalités de retard' },
+  { field: 'enableDues', label: 'Cotisations' },
+  { field: 'enableBadges', label: 'Badges' },
+  { field: 'enableDigest', label: 'Récap de la semaine' },
+  { field: 'enablePotChart', label: 'Graphique d’évolution' },
+  { field: 'enableKittyDates', label: 'Dates de la caisse' },
+  { field: 'enableLeaderboard', label: 'Classement' },
+  { field: 'allowPlayerReports', label: 'Signalements par les joueurs' },
+]
+
 const FeaturesSection = ({ canEdit }: { canEdit: boolean }) => {
   const settings = useSettings()
   const updateFeatures = useUpdateFeatures()
 
-  const toggle = (
-    label: string,
-    value: boolean | undefined,
-    field: 'allowPlayerReports',
-    fallback: boolean,
-  ) => (
-    <FormControlLabel
-      sx={{ ml: 0, justifyContent: 'space-between' }}
-      labelPlacement="start"
-      control={
-        <Switch
-          checked={value ?? fallback}
-          disabled={!canEdit || settings.isPending || updateFeatures.isPending}
-          onChange={(e) => updateFeatures.mutate({ [field]: e.target.checked })}
-        />
-      }
-      label={<Typography variant="body2">{label}</Typography>}
-    />
-  )
-
   return (
     <Section title="Fonctionnalités">
       <Stack spacing={0}>
-        {toggle(
-          'Signalements par les joueurs',
-          settings.data?.allowPlayerReports,
-          'allowPlayerReports',
-          false,
-        )}
+        {FEATURES.map(({ field, label }) => (
+          <FormControlLabel
+            key={field}
+            sx={{ ml: 0, justifyContent: 'space-between' }}
+            labelPlacement="start"
+            control={
+              <Switch
+                checked={settings.data?.[field] ?? false}
+                disabled={!canEdit || settings.isPending || updateFeatures.isPending}
+                onChange={(e) => updateFeatures.mutate({ [field]: e.target.checked })}
+              />
+            }
+            label={<Typography variant="body2">{label}</Typography>}
+          />
+        ))}
       </Stack>
+
+      {updateFeatures.error && <Alert severity="error">{updateFeatures.error.message}</Alert>}
 
       {/* Un interrupteur grisé sans explication laisse croire à une panne. */}
       {!canEdit && (

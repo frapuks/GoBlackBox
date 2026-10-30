@@ -100,9 +100,12 @@ export const memberRoutes: FastifyPluginAsync = async (app) => {
                   AND (r.kind IS NULL OR r.kind <> 'DUES')
                   AND (f.created_at AT TIME ZONE 'Europe/Paris')::date
                       > (NOW() AT TIME ZONE 'Europe/Paris')::date - 28) AS fines_window,
+              -- Cotisations coupées : il n'en tombera plus, la prévision ne
+              -- doit donc en annoncer aucune.
               (SELECT COALESCE(SUM(r.amount), 0)::int
                  FROM rules r
-                WHERE r.kind = 'DUES' AND r.archived_at IS NULL)     AS dues_amount,
+                WHERE r.kind = 'DUES' AND r.archived_at IS NULL
+                  AND s.enable_dues)                                  AS dues_amount,
               (SELECT COUNT(*)::int FROM members WHERE receives_fines) AS payers
          FROM settings s
         WHERE s.id = 1`,

@@ -18,9 +18,15 @@ import type { Fine, FineStatus, MemberSummary, Role } from '@blackbox/shared'
  *
  * Deux instants se comparent sans fuseau : aucun AT TIME ZONE ici, là où le
  * calcul par dates en exigeait un de chaque côté.
+ *
+ * Pénalités coupées, plus rien n'est en retard : le délai appartient à la
+ * pénalité. La condition vit ici pour qu'aucun écran ne puisse l'oublier —
+ * badge, couleur, statut « majorée », décompte du bouton et rappel en
+ * découlent tous.
  */
 export const IS_LATE_SQL = `
-  f.status = 'CONFIRMED'
+  s.enable_penalties
+  AND f.status = 'CONFIRMED'
   AND f.paid_at IS NULL
   AND f.created_at + make_interval(days => s.late_after_days) <= NOW()
 `

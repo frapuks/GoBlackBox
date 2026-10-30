@@ -24,6 +24,7 @@ import GroupsIcon from '@mui/icons-material/Groups'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import {
   isDuesLate,
+  isKindEnabled,
   isPenaltyLate,
   RULE_CONTEXTS,
   RULE_CONTEXT_LABEL,
@@ -65,13 +66,18 @@ export const RulesPage = () => {
   // change la clé de requête, vide la liste le temps du rechargement et fait
   // sauter tout l'écran. Un joueur ne les reçoit pas du tout.
   const rules = useRules(isStaff)
+  const settings = useSettings()
 
   // Sections coupées par l'admin : on masque plutôt que de laisser un titre
-  // et un bouton pour une fonctionnalité que l'équipe n'utilise pas.
+  // et un bouton pour une fonctionnalité que l'équipe n'utilise pas. Leurs
+  // règles restent en base, archivées comprises, et reviennent à la
+  // réactivation.
+  const features = settings.data
+  const showBadges = features?.enableBadges === true
 
   // Les trois sections ne montrent que l'actif, quel que soit l'interrupteur :
   // une règle archivée n'a rien à faire au milieu de celles qu'on applique.
-  const all = rules.data ?? []
+  const all = (rules.data ?? []).filter((r) => features && isKindEnabled(r.kind, features))
   const active = all.filter((r) => r.archivedAt === null)
   const archived = all.filter((r) => r.archivedAt !== null)
 
@@ -83,7 +89,7 @@ export const RulesPage = () => {
   // ligne d'ajout pour les gestionnaires, plutôt qu'un « + » isolé dans un
   // titre : on voit ce qui manque à l'endroit où ça devrait être.
   const applyRows = [
-    {
+    features?.enablePenalties && {
       key: 'penalty',
       node: penalties[0] ? (
         <ApplyRuleCard
@@ -96,7 +102,7 @@ export const RulesPage = () => {
         <AddApplyRow kind="PENALTY" onClick={() => setEditing({ create: 'PENALTY' })} />
       ) : null,
     },
-    {
+    features?.enableDues && {
       key: 'dues',
       node: dues[0] ? (
         <ApplyRuleCard
@@ -163,7 +169,7 @@ export const RulesPage = () => {
                 <RuleCard
                   key={r.id}
                   rule={r}
-                  showRanking
+                  showRanking={showBadges}
                   action={
                     isStaff ? (
                       <IconButton size="small" aria-label="Modifier" onClick={() => setEditing(r)}>
@@ -284,7 +290,9 @@ const ApplyRuleCard = ({
 }) => {
   const applyRule = useApplyRule()
   const dashboard = useDashboard()
-  const lateAfterDays = useSettings().data?.lateAfterDays
+  const settings = useSettings()
+  const lateAfterDays = settings.data?.lateAfterDays
+  const showBadges = settings.data?.enableBadges === true
   const [open, setOpen] = useState(false)
   const archived = rule.archivedAt !== null
   const isPenalty = rule.kind === 'PENALTY'
@@ -418,7 +426,7 @@ const ApplyRuleCard = ({
         </Box>
 
         {/* Sous le bouton : appliquer est l'action, le palmarès se consulte. */}
-        {rule.badgeIcon && <RuleRanking ruleId={rule.id} badge={rule.badgeIcon} />}
+        {showBadges && rule.badgeIcon && <RuleRanking ruleId={rule.id} badge={rule.badgeIcon} />}
       </Collapse>
 
       <ApplyDialog
@@ -833,7 +841,11 @@ const RuleDialog = ({ target, onClose }: { target: DialogTarget; onClose: () => 
 
           {/* Ouvert à tous les types de règle, cotisation et pénalité de
               retard comprises : à chacun de juger si la distinction l'amuse. */}
-          <BadgeField heading label="Badge du champion" value={badgeIcon} onChange={setBadgeIcon} />
+          {/* Badges coupés : le choix disparaît, mais l'icône déjà posée part
+              inchangée avec le formulaire et reviendra à la réactivation. */}
+          {settings.data?.enableBadges && (
+            <BadgeField heading label="Badge du champion" value={badgeIcon} onChange={setBadgeIcon} />
+          )}
 
           {rule && (
             <Stack spacing={0.5}>
